@@ -105,18 +105,36 @@ requirements.txt   # Python dependencies
 
 ## Setup
 
-CADSmith uses CadQuery, which needs a conda environment:
+### Windows (no admin, no conda) with a venv
+
+CadQuery 2.6.1 (the version used in the paper) installs from pip wheels, so conda is not needed. Use **Python 3.12** (3.11 also works). If you don't have it, install it from python.org and keep "Install for current user" selected, which needs no admin rights.
+
+In PowerShell, from the repo folder:
+
+```powershell
+# allow venv activation for this terminal session only (no admin needed)
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+
+py -3.12 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+
+copy .env.example .env   # then edit .env with your AWS credentials
+python scripts\check_llm.py
+```
+
+In VS Code, pick `.venv\Scripts\python.exe` as the interpreter (Ctrl+Shift+P → "Python: Select Interpreter").
+
+### Linux / macOS with conda
+
+CadQuery can also be installed with conda:
 
 ```bash
 conda create -n cadquery python=3.10
 conda activate cadquery
 conda install -c cadquery -c conda-forge cadquery=master
 pip install -r requirements.txt
-```
-
-VTK is required for the three-view rendering:
-```bash
-pip install vtk
 ```
 
 ### Claude on Amazon Bedrock (default in this fork)

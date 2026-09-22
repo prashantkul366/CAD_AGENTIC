@@ -1,5 +1,5 @@
 # Core CAD
-cadquery>=2.4
+cadquery==2.6.1  # version used in the paper
 numpy
 numpy-stl
 trimesh
@@ -13,4 +13,6 @@ python-dotenv
 
 # Experiment tracking
 pandas
+scipy
+vtk
 matplotlib

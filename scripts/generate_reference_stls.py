@@ -30,7 +30,7 @@ import json, sys
 
 try:
     _user_globals = {{}}
-    exec(open("{script_path}").read(), _user_globals)
+    exec(open("{script_path}", encoding="utf-8").read(), _user_globals)
 
     import cadquery as cq
     _result = None
@@ -124,12 +124,12 @@ def execute_one(args: tuple) -> dict:
     script_path = tmp_dir / "script.py"
     runner_path = tmp_dir / "runner.py"
 
-    script_path.write_text(cleaned)
+    script_path.write_text(cleaned, encoding="utf-8")
     runner_code = RUNNER_TEMPLATE.format(
         script_path=str(script_path).replace("\\", "\\\\"),
         stl_path=str(stl_path).replace("\\", "\\\\"),
     )
-    runner_path.write_text(runner_code)
+    runner_path.write_text(runner_code, encoding="utf-8")
 
     try:
         proc = subprocess.run(
@@ -166,7 +166,7 @@ def main():
 
     # Load test entries
     entries = []
-    with open(DATA_DIR / "data_test.jsonl") as f:
+    with open(DATA_DIR / "data_test.jsonl", encoding="utf-8") as f:
         for i, line in enumerate(f):
             entry = json.loads(line)
             uid_match = re.search(r'(\d{8})\.stl', entry["output"])
@@ -218,7 +218,7 @@ def main():
     # Save error log
     if errors:
         log_path = DATA_DIR / "reference_stl_errors.json"
-        with open(log_path, "w") as f:
+        with open(log_path, "w", encoding="utf-8") as f:
             json.dump(errors, f, indent=2)
         print(f"  Error log: {log_path}")
 

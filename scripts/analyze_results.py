@@ -53,7 +53,7 @@ def load_results(results_dir: Path) -> pd.DataFrame:
         sys.exit(1)
 
     records = []
-    with open(results_file) as f:
+    with open(results_file, encoding="utf-8") as f:
         for line in f:
             try:
                 records.append(json.loads(line))
@@ -177,7 +177,7 @@ def print_convergence_analysis(results_dir: Path):
     """Analyze per-iteration improvement (for refinement experiments)."""
     results_file = results_dir / "results.jsonl"
     records = []
-    with open(results_file) as f:
+    with open(results_file, encoding="utf-8") as f:
         for line in f:
             try:
                 records.append(json.loads(line))
@@ -241,7 +241,7 @@ def main():
     # Load config
     config_file = experiment_dir / "config.json"
     if config_file.exists():
-        with open(config_file) as f:
+        with open(config_file, encoding="utf-8") as f:
             config = json.load(f)
         print(f"Config: mode={config.get('mode')}, "
               f"max_iter={config.get('max_iterations')}, "
@@ -255,7 +255,7 @@ def main():
     print_comparison_table(df, f"AutoFab ({name})")
 
     # Convergence analysis (if refinement mode)
-    config = json.load(open(config_file)) if config_file.exists() else {}
+    config = json.load(open(config_file, encoding="utf-8")) if config_file.exists() else {}
     if config.get("mode") == "refinement":
         print_convergence_analysis(experiment_dir)
 

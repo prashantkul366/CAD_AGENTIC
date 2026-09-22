@@ -37,7 +37,7 @@ def main():
 
     # Save full log
     log_path = "outputs/test_part_log.json"
-    with open(log_path, "w") as f:
+    with open(log_path, "w", encoding="utf-8") as f:
         json.dump(result.to_dict(), f, indent=2)
     print(f"Full log: {log_path}")
 

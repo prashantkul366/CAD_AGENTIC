@@ -62,7 +62,7 @@ def load_entries(tiers: list[str], limit_per_tier: int = 0) -> list[dict]:
             continue
 
         tier_entries = []
-        with open(filepath) as f:
+        with open(filepath, encoding="utf-8") as f:
             for line in f:
                 entry = json.loads(line)
                 tier_entries.append(entry)
@@ -258,7 +258,7 @@ def main():
         "vision": not args.no_vision,
         "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
     }
-    with open(config_file, "w") as f:
+    with open(config_file, "w", encoding="utf-8") as f:
         json.dump(config, f, indent=2)
 
     # Load entries
@@ -277,7 +277,7 @@ def main():
     # so they will re-run even if previously completed
     completed_ids = set()
     if results_file.exists():
-        with open(results_file) as f:
+        with open(results_file, encoding="utf-8") as f:
             for line in f:
                 try:
                     r = json.loads(line)
@@ -320,7 +320,7 @@ def main():
         )
 
         # Append result
-        with open(results_file, "a") as f:
+        with open(results_file, "a", encoding="utf-8") as f:
             f.write(json.dumps(record) + "\n")
 
         total_done += 1
@@ -386,7 +386,7 @@ def main():
     tokens_total = sum(r.get("tokens", {}).get("input_tokens", 0) for r in [])  # from file
     # Re-read for token totals
     total_in, total_out = 0, 0
-    with open(results_file) as f:
+    with open(results_file, encoding="utf-8") as f:
         for line in f:
             r = json.loads(line)
             t = r.get("tokens", {})
