@@ -25,7 +25,7 @@ def main():
                 max_tokens=16,
                 messages=[{"role": "user", "content": "Reply with the word OK."}],
             )
-            print(f"{role:<6} {model}: {response.content[0].text.strip()!r}")
+            print(f"{role:<6} {model}: {llm.response_text(response).strip()!r}")
         except Exception as e:
             ok = False
             print(f"{role:<6} {model}: FAILED - {type(e).__name__}: {e}")

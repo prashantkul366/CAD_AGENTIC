@@ -8,9 +8,14 @@ Supports two backends, chosen with the LLM_BACKEND environment variable:
   anthropic The first-party Claude API, using ANTHROPIC_API_KEY
             (this is what the original paper used).
 
-The model defaults are the ones used in the paper (arXiv:2603.26512):
-  Coder / Planner / Refiners : Claude Sonnet 4.5 (claude-sonnet-4-5-20250929)
-  Validator Judge            : Claude Opus 4     (claude-opus-4-20250514)
+Model defaults (paper: arXiv:2603.26512):
+  Coder / Planner / Refiners : Claude Sonnet 4.5 (claude-sonnet-4-5-20250929), as in the paper
+  Validator Judge            : Claude Opus 4.5   (claude-opus-4-5-20251101)
+
+The paper's Judge was Claude Opus 4 (claude-opus-4-20250514). It has reached
+end of life on Bedrock, as has its successor Opus 4.1, so the default Judge
+is Opus 4.5: the closest Opus still served, and like Opus 4 it does not
+think unless asked. This is the one deliberate deviation from the paper.
 
 Override with CODER_MODEL / JUDGE_MODEL. On Bedrock, a bare Anthropic model
 ID such as "claude-sonnet-4-5-20250929" is converted to the matching
@@ -28,7 +33,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 PAPER_CODER_MODEL = "claude-sonnet-4-5-20250929"
-PAPER_JUDGE_MODEL = "claude-opus-4-20250514"
+PAPER_JUDGE_MODEL = "claude-opus-4-20250514"  # retired on Bedrock
+DEFAULT_JUDGE_MODEL = "claude-opus-4-5-20251101"
 
 
 def get_backend() -> str:
@@ -70,7 +76,21 @@ def coder_model() -> str:
 
 
 def judge_model() -> str:
-    return resolve_model(os.getenv("JUDGE_MODEL", PAPER_JUDGE_MODEL))
+    return resolve_model(os.getenv("JUDGE_MODEL", DEFAULT_JUDGE_MODEL))
+
+
+def response_text(response) -> str:
+    """Text of the first text block in a Messages API response.
+
+    Models that think by default put a thinking block before the text, so
+    response.content[0] is not always text.
+    """
+    if response.stop_reason == "refusal":
+        raise RuntimeError(f"Model refused the request (model={response.model})")
+    for block in response.content:
+        if block.type == "text":
+            return block.text
+    raise RuntimeError(f"No text block in response (stop_reason={response.stop_reason})")
 
 
 _client = None

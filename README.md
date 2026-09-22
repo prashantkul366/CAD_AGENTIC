@@ -150,18 +150,20 @@ cp .env.example .env
 #   AWS_REGION=us-east-1
 ```
 
-Values already exported in your shell also work, as does an `AWS_PROFILE`. Make sure model access is enabled in the Bedrock console for **Claude Sonnet 4.5** and **Claude Opus 4** in your region, then check the connection:
+Values already exported in your shell also work, as does an `AWS_PROFILE`. Make sure model access is enabled in the Bedrock console for **Claude Sonnet 4.5** and **Claude Opus 4.5** in your region, then check the connection:
 
 ```bash
 python scripts/check_llm.py
 ```
 
-By default the models are the ones used in the paper:
+Default models:
 
-| Role | Paper model | Bedrock ID used (region `us-*`) |
-|---|---|---|
-| Planner, Coder, Error Refiner, Refiner, zero-shot baseline | `claude-sonnet-4-5-20250929` | `us.anthropic.claude-sonnet-4-5-20250929-v1:0` |
-| Validator Judge | `claude-opus-4-20250514` | `us.anthropic.claude-opus-4-20250514-v1:0` |
+| Role | Paper model | Model used here | Bedrock ID (region `us-*`) |
+|---|---|---|---|
+| Planner, Coder, Error Refiner, Refiner, zero-shot baseline | Sonnet 4.5 `claude-sonnet-4-5-20250929` | same | `us.anthropic.claude-sonnet-4-5-20250929-v1:0` |
+| Validator Judge | Opus 4 `claude-opus-4-20250514` | **Opus 4.5** `claude-opus-4-5-20251101` | `us.anthropic.claude-opus-4-5-20251101-v1:0` |
+
+The paper's Judge, Claude Opus 4, has reached end of life on Bedrock (as has Opus 4.1), so the Judge defaults to Opus 4.5, the closest Opus still available. This is the only deviation from the paper's model setup. The zero-shot baseline doesn't use the Judge, so it is unaffected.
 
 The `us.` / `eu.` / `apac.` cross-region inference profile prefix is chosen from `AWS_REGION` (override with `BEDROCK_INFERENCE_PREFIX`). To use other models, set `CODER_MODEL` / `JUDGE_MODEL` to a bare Anthropic model ID or to a full Bedrock model ID, inference profile ID or ARN. The backend and resolved model IDs are saved in each experiment's `config.json`.
 

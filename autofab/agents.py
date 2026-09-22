@@ -8,7 +8,7 @@ Implements the multi-agent pipeline:
 import os
 from typing import Optional
 
-from .llm import get_client, coder_model, judge_model
+from .llm import get_client, coder_model, judge_model, response_text
 
 # ---------------------------------------------------------------------------
 # Token usage tracking
@@ -47,7 +47,7 @@ def _call_claude(system: str, user: str, model: str | None = None, max_tokens: i
         _token_usage["input_tokens"] += response.usage.input_tokens
         _token_usage["output_tokens"] += response.usage.output_tokens
     _token_usage["calls"] += 1
-    return response.content[0].text
+    return response_text(response)
 
 
 # ---------------------------------------------------------------------------
@@ -281,7 +281,7 @@ def evaluate_geometry(
 ) -> dict:
     """Validator agent: evaluates code, kernel metrics, and rendered image against the prompt.
 
-    Uses Claude Opus as the Judge model — a stronger model than the Coder
+    Uses Claude Opus as the Judge model (Opus 4.5 by default; the paper used Opus 4) — a stronger model than the Coder
     (Sonnet) to avoid confirmation bias from self-evaluation.
 
     When stl_path is provided, renders a three-view image and sends it
@@ -377,7 +377,7 @@ def evaluate_geometry(
         _token_usage["output_tokens"] += response.usage.output_tokens
     _token_usage["calls"] += 1
 
-    text = response.content[0].text.strip()
+    text = response_text(response).strip()
     if text.startswith("```json"):
         text = text[len("```json"):].strip()
     elif text.startswith("```"):

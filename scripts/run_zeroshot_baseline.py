@@ -118,7 +118,7 @@ def zero_shot_generate(prompt: str) -> tuple[str, dict]:
         "calls": 1,
     }
 
-    code = response.content[0].text.strip()
+    code = llm.response_text(response).strip()
     if code.startswith("```python"):
         code = code[len("```python"):].strip()
     elif code.startswith("```"):
