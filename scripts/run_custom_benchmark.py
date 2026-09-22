@@ -36,6 +36,7 @@ from autofab.pipeline import Pipeline
 from autofab.executor import Executor
 from autofab.metrics import compare_stl
 from autofab import agents
+from autofab import llm
 
 DATA_DIR = PROJECT_ROOT / "data" / "dataset_v2"
 RESULTS_BASE_DIR = PROJECT_ROOT / "results"
@@ -251,6 +252,7 @@ def main():
         "max_error_retries": args.max_error_retries,
         "limit_per_tier": args.limit_per_tier,
         "model": "claude-sonnet",
+        "llm": llm.describe(),
         "pipeline": "full" if args.mode == "refinement" else "single-shot",
         "rag_config": "kb1+kb2",
         "vision": not args.no_vision,

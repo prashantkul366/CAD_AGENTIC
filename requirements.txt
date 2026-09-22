@@ -5,7 +5,8 @@ numpy-stl
 trimesh
 
 # LLM
-anthropic>=0.40.0
+anthropic[bedrock]>=0.40.0
+boto3
 
 # Environment
 python-dotenv

@@ -8,10 +8,7 @@ Implements the multi-agent pipeline:
 import os
 from typing import Optional
 
-import anthropic
-from dotenv import load_dotenv
-
-load_dotenv()
+from .llm import get_client, coder_model, judge_model
 
 # ---------------------------------------------------------------------------
 # Token usage tracking
@@ -32,15 +29,15 @@ def reset_token_usage():
     _token_usage["calls"] = 0
 
 
-def _get_client() -> anthropic.Anthropic:
-    return anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+def _get_client():
+    return get_client()
 
 
-def _call_claude(system: str, user: str, model: str = "claude-sonnet-4-5-20250929", max_tokens: int = 4096) -> str:
+def _call_claude(system: str, user: str, model: str | None = None, max_tokens: int = 4096) -> str:
     """Call Claude and return the text response. Tracks token usage."""
     client = _get_client()
     response = client.messages.create(
-        model=model,
+        model=model or coder_model(),
         max_tokens=max_tokens,
         system=system,
         messages=[{"role": "user", "content": user}],
@@ -368,7 +365,7 @@ def evaluate_geometry(
     # Call Opus with vision-capable message format
     client = _get_client()
     response = client.messages.create(
-        model="claude-opus-4-20250514",
+        model=judge_model(),
         max_tokens=4096,
         system=VALIDATOR_SYSTEM,
         messages=[{"role": "user", "content": message_content}],

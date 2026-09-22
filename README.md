@@ -2,6 +2,8 @@
 
 **Multi-agent CAD generation with programmatic geometric validation.**
 
+> **Fork note:** This is a fresh copy of [jabarkle/CADSmith](https://github.com/jabarkle/CADSmith), changed only so the agents can call Claude through **Amazon Bedrock** (see [Setup](#setup)). Pipeline logic, prompts, dataset and metrics are unchanged from the original.
+
 CADSmith takes a natural language description of a 3D part and produces manufacturing-ready CAD geometry. It works by having multiple LLM agents collaborate — one plans, one writes CadQuery code, one validates the geometry using real measurements from the CAD kernel, and one refines the code when something is off. The result is a closed loop that iterates until the part is dimensionally correct, not just visually plausible.
 
 ![Pipeline overview](assets/overview.jpg)
@@ -78,6 +80,7 @@ This quadcopter frame (T3\_019) scored F1 = 0.963 and IoU = 0.985 — it passed 
 CADSmith/
   pipeline.py      # Main pipeline orchestration (Planner → Coder → Executor → Validator → Refiner loop)
   agents.py        # All LLM agent definitions (Planner, Coder, Error Refiner, Judge, Refiner)
+  llm.py           # Claude client (Amazon Bedrock or Claude API) and model selection
   executor.py      # Sandboxed subprocess execution, OCCT geometry extraction, STEP/STL export
   validator.py     # Solid validity check + LLM-as-Judge with optional vision
   render.py        # VTK three-view rendering (isometric, high-angle rear, front profile)
@@ -89,6 +92,7 @@ scripts/
   run_custom_benchmark.py     # Full pipeline benchmark on the 100-entry dataset
   run_zeroshot_baseline.py    # Zero-shot baseline (single LLM call, no agents)
   analyze_results.py          # Load results, compute summaries, compare to baselines
+  check_llm.py                # Verify the Claude backend and both models are reachable
 
 data/dataset_v2/
   t1_primitives.jsonl          # 50 basic shape prompts with reference CadQuery code
@@ -115,10 +119,37 @@ VTK is required for the three-view rendering:
 pip install vtk
 ```
 
-Set your Anthropic API key:
+### Claude on Amazon Bedrock (default in this fork)
+
+This copy runs Claude through **Amazon Bedrock** by default. Copy the example env file and fill in your AWS credentials:
+
 ```bash
-echo "ANTHROPIC_API_KEY=your-key-here" > .env
+cp .env.example .env
+# then edit .env:
+#   AWS_ACCESS_KEY_ID=...
+#   AWS_SECRET_ACCESS_KEY=...
+#   AWS_SESSION_TOKEN=...      # needed for temporary credentials
+#   AWS_REGION=us-east-1
 ```
+
+Values already exported in your shell also work, as does an `AWS_PROFILE`. Make sure model access is enabled in the Bedrock console for **Claude Sonnet 4.5** and **Claude Opus 4** in your region, then check the connection:
+
+```bash
+python scripts/check_llm.py
+```
+
+By default the models are the ones used in the paper:
+
+| Role | Paper model | Bedrock ID used (region `us-*`) |
+|---|---|---|
+| Planner, Coder, Error Refiner, Refiner, zero-shot baseline | `claude-sonnet-4-5-20250929` | `us.anthropic.claude-sonnet-4-5-20250929-v1:0` |
+| Validator Judge | `claude-opus-4-20250514` | `us.anthropic.claude-opus-4-20250514-v1:0` |
+
+The `us.` / `eu.` / `apac.` cross-region inference profile prefix is chosen from `AWS_REGION` (override with `BEDROCK_INFERENCE_PREFIX`). To use other models, set `CODER_MODEL` / `JUDGE_MODEL` to a bare Anthropic model ID or to a full Bedrock model ID, inference profile ID or ARN. The backend and resolved model IDs are saved in each experiment's `config.json`.
+
+Session tokens expire. If a long run stops with an auth error, refresh the credentials in `.env` and re-run the same command: the benchmark scripts skip entries already in `results.jsonl`.
+
+To use the first-party Claude API instead (what the original authors used), set `LLM_BACKEND=anthropic` and `ANTHROPIC_API_KEY` in `.env`.
 
 ## Usage
 
@@ -148,8 +179,21 @@ Results are saved to `results/<experiment-name>/results.jsonl`.
 ### Analyze results
 
 ```bash
-python scripts/analyze_results.py
+python scripts/analyze_results.py results/<experiment-name>
+python scripts/analyze_results.py results/<experiment-name> --compare results/<other-experiment>
 ```
+
+### Reproducing the paper's Table I
+
+The three configurations in the paper map to these runs (the defaults are already 5 refinement iterations and 3 error retries):
+
+```bash
+python scripts/run_custom_benchmark.py --experiment-name full_vision --verbose            # Full (vision)
+python scripts/run_custom_benchmark.py --experiment-name no_vision --no-vision --verbose  # No-vision ablation
+python scripts/run_zeroshot_baseline.py --experiment-name zeroshot                        # Zero-shot baseline
+```
+
+For a cheap smoke test first, add `--limit-per-tier 2`.
 
 ## Models Used
 

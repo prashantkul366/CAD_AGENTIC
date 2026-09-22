@@ -28,17 +28,13 @@ import sys
 import time
 from pathlib import Path
 
-import anthropic
-from dotenv import load_dotenv
-
-load_dotenv()
-
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from autofab.executor import Executor
 from autofab.metrics import compare_stl
 from autofab.render import render_stl_to_png
+from autofab import llm
 
 DATA_DIR = PROJECT_ROOT / "data" / "dataset_v2"
 RESULTS_BASE_DIR = PROJECT_ROOT / "results"
@@ -49,7 +45,7 @@ TIER_FILES = {
     "T3": "t3_complex_parts.jsonl",
 }
 
-MODEL = "claude-sonnet-4-5-20250929"
+MODEL = llm.coder_model()
 
 SYSTEM_PROMPT = """You are a CAD engineer. Generate a complete, executable Python script using the CadQuery library to create the requested 3D part.
 
@@ -108,7 +104,7 @@ def generate_reference_stl(reference_code: str, entry_id: str, output_dir: Path)
 
 def zero_shot_generate(prompt: str) -> tuple[str, dict]:
     """One raw LLM call. Returns (code, token_usage)."""
-    client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+    client = llm.get_client()
     response = client.messages.create(
         model=MODEL,
         max_tokens=4096,
@@ -227,6 +223,7 @@ def main():
         "tiers": args.tiers,
         "mode": "zero-shot",
         "model": MODEL,
+        "llm": llm.describe(),
         "system_prompt": SYSTEM_PROMPT,
         "pipeline": "none (raw LLM call)",
         "rag": False,
