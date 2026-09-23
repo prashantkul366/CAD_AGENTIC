@@ -68,8 +68,8 @@ def load_results(results_dir: Path) -> pd.DataFrame:
     flat = []
     for r in records:
         row = {
-            "uid": r["uid"],
-            "input": r.get("input", "")[:100],
+            "uid": r.get("id", r.get("uid")),
+            "input": r.get("prompt", r.get("input", ""))[:100],
             "success": r.get("success", False),
             "execution_success": r.get("execution_success", False),
             "num_iterations": r.get("num_iterations", 0),
