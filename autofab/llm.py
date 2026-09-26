@@ -26,6 +26,7 @@ is passed through unchanged.
 """
 
 import os
+import re
 
 import anthropic
 from dotenv import load_dotenv
@@ -63,11 +64,17 @@ def _bedrock_geo_prefix(region: str) -> str:
 
 
 def resolve_model(model: str) -> str:
-    """Map a model name to the ID the active backend expects."""
+    """Map a model name to the ID the active backend expects.
+
+    Dated IDs (claude-sonnet-4-5-20250929) get the Bedrock "-v1:0" version
+    suffix; undated IDs of newer models (claude-sonnet-4-6) are used as is.
+    Run scripts/check_llm.py to confirm the resolved ID on your account.
+    """
     if get_backend() != "bedrock" or "anthropic." in model:
         return model
     prefix = _bedrock_geo_prefix(_aws_region())
-    bedrock_id = f"anthropic.{model}-v1:0"
+    dated = bool(re.search(r"-\d{8}$", model))
+    bedrock_id = f"anthropic.{model}-v1:0" if dated else f"anthropic.{model}"
     return f"{prefix}.{bedrock_id}" if prefix else bedrock_id
 
 

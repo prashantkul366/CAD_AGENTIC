@@ -3,6 +3,7 @@ cadquery==2.6.1  # version used in the paper
 numpy
 numpy-stl
 trimesh
+rtree  # exact point-to-mesh distance for symmetry checks
 
 # LLM
 anthropic[bedrock]>=0.40.0

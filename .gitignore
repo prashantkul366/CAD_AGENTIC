@@ -43,3 +43,9 @@ experiments/logs/
 .DS_Store
 Thumbs.db
 models/
+
+# RST: third-party datasets (fetched by scripts/data/*, licences in docs/research/DATASETS.md)
+data/external/
+# RST: run outputs and caches
+runs/
+.pytest_cache/
