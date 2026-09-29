@@ -187,7 +187,16 @@ class ShapeAnalysis:
 
     @cached_property
     def bbox(self) -> dict:
-        bb = self.shape.BoundingBox()
+        # exact geometry, ignoring any tessellation and shape tolerances (CadQuery's default can
+        # use a mesh once the shape has been tessellated, which inflates boxes by ~0.02 mm)
+        from OCP.Bnd import Bnd_Box
+        from OCP.BRepBndLib import BRepBndLib
+        box = Bnd_Box()
+        try:
+            BRepBndLib.AddOptimal_s(self.shape.wrapped, box, False, False)
+            bb = cq.occ_impl.geom.BoundBox(box)
+        except Exception:
+            bb = self.shape.BoundingBox()
         return {
             "xmin": bb.xmin, "xmax": bb.xmax, "xlen": bb.xlen,
             "ymin": bb.ymin, "ymax": bb.ymax, "ylen": bb.ylen,

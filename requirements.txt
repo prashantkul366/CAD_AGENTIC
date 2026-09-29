@@ -14,6 +14,7 @@ python-dotenv
 
 # Experiment tracking
 pandas
+pyarrow  # reads the CADTestBench parquet files
 scipy
 vtk
 matplotlib

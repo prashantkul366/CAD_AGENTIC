@@ -145,6 +145,23 @@ def _fmt(v) -> str:
     return "(" + ", ".join(f"{float(x):g}" for x in np.round(np.asarray(v, dtype=float), 3)) + ")"
 
 
+def _nearest_class(feats, diameter, tol):
+    """Features in the diameter class closest to `diameter` (all features if no diameter given)."""
+    if diameter is None or not feats:
+        return list(feats)
+    d = float(diameter)
+    best = min(feats, key=lambda f: abs(f.diameter - d)).diameter
+    return [f for f in feats if abs(f.diameter - best) <= max(tol, 1e-3)]
+
+
+def _near_miss(feats, target, d):
+    """The feature that best approximates 'diameter d on an axis through target' (position and size together)."""
+    if not feats:
+        return None
+    scale = max(d, 1.0)
+    return min(feats, key=lambda f: point_line_distance(target, f.point, f.axis) / scale + abs(f.diameter - d) / scale)
+
+
 def _similar_size(f, diameter) -> bool:
     return diameter is None or 0.5 * float(diameter) <= f.diameter <= 2.0 * float(diameter)
 
@@ -280,9 +297,9 @@ def _p_hole_count(A, p):
     msg = "" if ok else f"found {n} matching holes, expected {p['count']}" + (
         f" ({len(partial)} partial arcs of that size, e.g. cut through an edge)" if partial else "") + (
         f"; other hole diameters present: {others}" if others else "")
-    # footprint: holes along the axis of similar size (0.5x-2x the target), whatever their exact diameter
-    footprint = sorted(_feat_brief(f) for f in A.holes(False)
-                       if _axis_filter(f, p.get("axis")) and _similar_size(f, p.get("diameter")))
+    # footprint (near-miss provenance): the holes of the diameter class closest to the target
+    axis_holes = [f for f in A.holes(False) if _axis_filter(f, p.get("axis"))]
+    footprint = sorted(_feat_brief(f) for f in _nearest_class(axis_holes, p.get("diameter"), tol))
     return Verdict(ok, n, msg, footprint)
 
 
@@ -301,8 +318,8 @@ def _p_boss_count(A, p):
     tol = _tol(p, p.get("diameter") or 0)
     m = [f for f in A.bosses(True) if _diam_ok(f, p.get("diameter"), tol) and _axis_filter(f, p.get("axis"))]
     n = len(m)
-    footprint = sorted(_feat_brief(f) for f in A.bosses(False)
-                       if _axis_filter(f, p.get("axis")) and _similar_size(f, p.get("diameter")))
+    axis_bosses = [f for f in A.bosses(False) if _axis_filter(f, p.get("axis"))]
+    footprint = sorted(_feat_brief(f) for f in _nearest_class(axis_bosses, p.get("diameter"), tol))
     return Verdict(n == int(p["count"]), n, "" if n == int(p["count"]) else f"found {n} bosses, expected {p['count']}",
                    footprint)
 
@@ -319,13 +336,16 @@ def _feature_at(full_feats, all_feats, p, label):
     tol = _tol(p, d)
     target = _vec3(p["center"])
     axis = p.get("axis")
-    best, best_dist = None, float("inf")
+    # prefer a feature that matches both position and diameter (coaxial features such as a
+    # counterbore and its drill share an axis); otherwise report the nearest one
+    best, best_dist, best_key = None, float("inf"), None
     for f in full_feats:
         if not _axis_filter(f, axis):
             continue
         dist = point_line_distance(target, f.point, f.axis)
-        if dist < best_dist:
-            best, best_dist = f, dist
+        key = (0 if dist <= max(tol, 0.1) and abs(f.diameter - d) <= tol else 1, dist, abs(f.diameter - d))
+        if best_key is None or key < best_key:
+            best, best_dist, best_key = f, dist, key
     ok = False
     msg = ""
     if best is not None:
@@ -349,10 +369,11 @@ def _feature_at(full_feats, all_feats, p, label):
     else:
         partial = [f for f in all_feats if point_line_distance(target, f.point, f.axis) <= max(tol, 0.5)]
         msg = f"no complete {label} found" + (" (only a partial arc there)" if partial else "")
-    radius = max(3.0 * d, 5.0)
-    nearby = sorted(_feat_brief(f) for f in all_feats if point_line_distance(target, f.point, f.axis) <= radius)
+    cands = [f for f in all_feats if _axis_filter(f, axis)]
+    near = _near_miss(cands, target, d)
+    measure = None if near is None else _feat_brief(near) + [bool(near.full)]
     return Verdict(ok, {"distance": None if best is None else round(best_dist, 4),
-                        "diameter": None if best is None else round(best.diameter, 4)}, msg, nearby)
+                        "diameter": None if best is None else round(best.diameter, 4)}, msg, measure)
 
 
 @predicate("through_hole_count", "terminal", ("count",), (),
@@ -403,9 +424,10 @@ def _p_bolt_circle(A, p):
         if abs(r - R) <= max(tol, 0.2):
             on_circle.append(c)
     n = len(on_circle)
+    band = [f for f in A.holes(False) if abs(abs(np.dot(f.axis, axis)) - 1) < 1e-3
+            and abs(point_line_distance(f.center_near(center), center, axis) - R) <= max(3 * d, 5.0)]
     footprint = sorted([round(f.diameter, 2)] + [round(float(x), 2) for x in f.center_near(center)]
-                       for f in A.holes(False) if abs(abs(np.dot(f.axis, axis)) - 1) < 1e-3 and _similar_size(f, d)
-                       and abs(point_line_distance(f.center_near(center), center, axis) - R) <= max(3 * d, 5.0))
+                       for f in _nearest_class(band, d, tol))
     spacing_ok = True
     if n >= 2:
         # angles in the plane perpendicular to the axis
@@ -425,19 +447,21 @@ def _p_bolt_circle(A, p):
 # ---------------------------------------------------------------------------
 
 @predicate("planar_face_at", "persistent", ("normal", "offset"), ("min_area", "tol"),
-           "A planar face with outward normal `normal` (e.g. '+Z') lying on the plane normal.x = offset "
-           "(e.g. the top face at Z=10 -> normal '+Z', offset 10).", {"normal": "+Z", "offset": 10})
+           "A planar face whose outward normal is `normal` ('+Z', '-X', ...) lying at coordinate `offset` along "
+           "that axis. Top face at Z=10 -> normal '+Z', offset 10; bottom face at Z=0 -> normal '-Z', offset 0.",
+           {"normal": "+Z", "offset": 10})
 def _p_planar(A, p):
     n = parse_direction(p["normal"])
+    base = parse_direction(str(p["normal"]).strip().lstrip("+-")) if isinstance(p["normal"], str) else n
     off = float(p["offset"])
     tol = _tol(p, off)
     min_area = float(p.get("min_area", 0.0))
-    cands = [f for f in A.planes if np.dot(f.normal, n) > 0.999]
-    hits = [f for f in cands if abs(f.offset - off) <= tol and f.area >= min_area]
-    near = sorted(round(f.offset, 3) for f in cands)
+    cands = [(float(np.dot(f.center, base)), f) for f in A.planes if np.dot(f.normal, n) > 0.999]
+    hits = [f for pos, f in cands if abs(pos - off) <= tol and f.area >= min_area]
+    near = sorted(round(pos, 3) for pos, _ in cands)
     ok = bool(hits)
     msg = "" if ok else f"no {p['normal']} face at {off} (faces with that normal at {near[:8]})"
-    return Verdict(ok, near[:8], msg, [_q(f.offset, tol / 2) for f in sorted(cands, key=lambda f: f.offset)])
+    return Verdict(ok, near[:8], msg, [_q(pos, tol / 2) for pos in near])
 
 
 @predicate("face_count", "terminal", ("face_type",), ("count", "min", "max"),

@@ -61,6 +61,12 @@ class MethodResult:
         return asdict(self)
 
 
+def _charge(usage: Usage, pre) -> None:
+    """Add the shared calls (P0 generation, requirement writer) made before the method started."""
+    for role, inp, out in (pre or [("generate", 0, 0)]):
+        usage.add(role, int(inp), int(out), 0.0)
+
+
 class Budget:
     def __init__(self, usage: Usage, limit: int):
         self.usage = usage
@@ -146,19 +152,19 @@ def _finish(method, best_res, best_code, last_res, last_code, cfg_policy, rounds
 # methods
 # ---------------------------------------------------------------------------
 
-def run_zero_shot(eng: Engine, p0: str) -> MethodResult:
+def run_zero_shot(eng: Engine, p0: str, pre=None) -> MethodResult:
     t0, k0 = time.time(), eng.kernel.calls
     usage = Usage()
-    usage.add("generate", 0, 0, 0.0)  # P0 counts as one call
+    _charge(usage, pre)
     res = eng.kernel.run(p0, [], eng._tag())
     out = MethodResult("zero_shot", p0, res.to_dict(), [], usage.to_dict(), eng.kernel.calls - k0, time.time() - t0)
     return out
 
 
-def run_react(eng: Engine, p0: str, cfg: RSTConfig) -> MethodResult:
+def run_react(eng: Engine, p0: str, cfg: RSTConfig, pre=None) -> MethodResult:
     t0 = time.time()
     usage = eng.llm.usage = Usage()
-    usage.add("generate", 0, 0, 0.0)
+    _charge(usage, pre)
     budget = Budget(usage, cfg.max_llm_calls)
     rounds: list = []
     res, code = eng.execute(p0, [], budget, cfg.max_error_fixes, rounds)
@@ -171,7 +177,7 @@ def run_react(eng: Engine, p0: str, cfg: RSTConfig) -> MethodResult:
             rounds.append({"step": "react", "decision": "DONE"})
             break
         new_res, new_code = eng.execute(new, [], budget, cfg.max_error_fixes, rounds)
-        rounds.append({"step": "react", "decision": "rewrite", "success": new_res.success})
+        rounds.append({"step": "react", "decision": "rewrite", "success": new_res.success, "code": new_code})
         if new_res.success:
             res, code = new_res, new_code
             best_res, best_code = res, code   # no self-check available: best == last successful
@@ -187,11 +193,11 @@ def _write(eng: Engine, budget: Budget, reqs: Optional[list]):
 
 
 def run_tests_log(eng: Engine, p0: str, cfg: RSTConfig, reqs: Optional[list] = None,
-                  with_log: bool = True) -> MethodResult:
+                  with_log: bool = True, pre=None) -> MethodResult:
     """Whole-program refinement driven by self-written requirements (CADTests+Log style)."""
     t0 = time.time()
     usage = eng.llm.usage = Usage()
-    usage.add("generate", 0, 0, 0.0)
+    _charge(usage, pre)
     budget = Budget(usage, cfg.max_llm_calls)
     reqs, errors = _write(eng, budget, reqs)
     rounds: list = []
@@ -209,7 +215,7 @@ def run_tests_log(eng: Engine, p0: str, cfg: RSTConfig, reqs: Optional[list] = N
                                  roles.construction_log(res) if with_log else None)
         new_res, new_code = eng.execute(new, reqs, budget, cfg.max_error_fixes, rounds)
         rounds.append({"step": "refine_whole", "success": new_res.success, "score": _score(new_res),
-                       "regressed": _regressed(res, new_res)})
+                       "regressed": _regressed(res, new_res), "code": new_code})
         if new_res.success:
             res, code = new_res, new_code          # CADTests-style: continue from the latest program
             if _score(res) > _score(best_res):
@@ -220,10 +226,10 @@ def run_tests_log(eng: Engine, p0: str, cfg: RSTConfig, reqs: Optional[list] = N
 
 
 def run_best_of_n(eng: Engine, p0: str, cfg: RSTConfig, reqs: Optional[list] = None, n: Optional[int] = None,
-                  threaded: bool = True) -> MethodResult:
+                  threaded: bool = True, pre=None) -> MethodResult:
     t0 = time.time()
     usage = eng.llm.usage = Usage()
-    usage.add("generate", 0, 0, 0.0)
+    _charge(usage, pre)
     budget = Budget(usage, cfg.max_llm_calls)
     reqs, errors = _write(eng, budget, reqs)
     rounds: list = []
@@ -240,11 +246,11 @@ def run_best_of_n(eng: Engine, p0: str, cfg: RSTConfig, reqs: Optional[list] = N
                    reqs, errors, "budget")
 
 
-def run_rst(eng: Engine, p0: str, cfg: RSTConfig, reqs: Optional[list] = None) -> MethodResult:
+def run_rst(eng: Engine, p0: str, cfg: RSTConfig, reqs: Optional[list] = None, pre=None) -> MethodResult:
     """Requirement-Satisfaction Trajectories: blame the step, repair it, keep only improvements."""
     t0 = time.time()
     usage = eng.llm.usage = Usage()
-    usage.add("generate", 0, 0, 0.0)
+    _charge(usage, pre)
     budget = Budget(usage, cfg.max_llm_calls)
     reqs, errors = _write(eng, budget, reqs)
     rng = random.Random(cfg.seed)
@@ -281,7 +287,7 @@ def run_rst(eng: Engine, p0: str, cfg: RSTConfig, reqs: Optional[list] = None) -
                 continue
             new_res, new_code = eng.execute(new_code, reqs, budget, cfg.max_error_fixes, rounds)
             entry.update({"result": "executed" if new_res.success else "exec_failed", "score": _score(new_res),
-                          "prev_score": _score(cur), "regressed": _regressed(cur, new_res)})
+                          "prev_score": _score(cur), "regressed": _regressed(cur, new_res), "code": new_code})
             if _accept(cfg, cur, new_res):
                 entry["accepted"] = True
                 rounds.append(entry)
@@ -338,10 +344,10 @@ def _propose(cfg: RSTConfig, eng: Engine, prog: Program, traj: Trajectory, cur: 
 
 
 METHODS = {
-    "zero_shot": lambda eng, p0, cfg, reqs=None: run_zero_shot(eng, p0),
-    "react": lambda eng, p0, cfg, reqs=None: run_react(eng, p0, cfg),
-    "tests": lambda eng, p0, cfg, reqs=None: run_tests_log(eng, p0, cfg, reqs, with_log=False),
-    "tests_log": lambda eng, p0, cfg, reqs=None: run_tests_log(eng, p0, cfg, reqs, with_log=True),
-    "best_of_n": lambda eng, p0, cfg, reqs=None: run_best_of_n(eng, p0, cfg, reqs),
-    "rst": lambda eng, p0, cfg, reqs=None: run_rst(eng, p0, cfg, reqs),
+    "zero_shot": lambda eng, p0, cfg, reqs=None, pre=None: run_zero_shot(eng, p0, pre),
+    "react": lambda eng, p0, cfg, reqs=None, pre=None: run_react(eng, p0, cfg, pre),
+    "tests": lambda eng, p0, cfg, reqs=None, pre=None: run_tests_log(eng, p0, cfg, reqs, with_log=False, pre=pre),
+    "tests_log": lambda eng, p0, cfg, reqs=None, pre=None: run_tests_log(eng, p0, cfg, reqs, with_log=True, pre=pre),
+    "best_of_n": lambda eng, p0, cfg, reqs=None, pre=None: run_best_of_n(eng, p0, cfg, reqs, pre=pre),
+    "rst": lambda eng, p0, cfg, reqs=None, pre=None: run_rst(eng, p0, cfg, reqs, pre=pre),
 }

@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import json
 import os
+import queue
 import subprocess
 import sys
+import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -54,6 +56,7 @@ class KernelResult:
     coverage: dict = field(default_factory=dict)
     requirement_errors: list = field(default_factory=list)
     time_ms: float = 0.0
+    autospec: Optional[list] = None
 
     # --- matrix views ---------------------------------------------------------------
 
@@ -98,19 +101,95 @@ class KernelResult:
         return d
 
 
-class Kernel:
-    """Executes CadQuery programs in a subprocess with tracing and requirement evaluation."""
+class _Worker:
+    """One long-lived `python -m rst.runner --serve` process."""
 
-    def __init__(self, workdir: str, timeout: int = 60, python: Optional[str] = None, max_rows: int = 60):
+    def __init__(self, python: str):
+        self.proc = subprocess.Popen([python, "-u", "-m", "rst.runner", "--serve"], cwd=str(REPO_ROOT), env=_clean_env(),
+                                     stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                                     encoding="utf-8", errors="replace", bufsize=1)
+        self.lines = queue.Queue()
+        self.jobs = 0
+        threading.Thread(target=self._pump, daemon=True).start()
+        self.lines.get(timeout=180)  # READY
+
+    def _pump(self):
+        for line in self.proc.stdout:
+            self.lines.put(line.strip())
+        self.lines.put("<closed>")
+
+    def run(self, job_path: str, timeout: float) -> bool:
+        self.jobs += 1
+        self.proc.stdin.write(job_path + "\n")
+        self.proc.stdin.flush()
+        deadline = time.time() + timeout
+        while True:
+            left = deadline - time.time()
+            if left <= 0:
+                return False
+            try:
+                line = self.lines.get(timeout=left)
+            except queue.Empty:
+                return False
+            if line == "<closed>":
+                return False
+            if line == f"DONE {job_path}":
+                return True
+
+    def kill(self):
+        try:
+            self.proc.kill()
+        except Exception:
+            pass
+
+
+class _Pool:
+    """Thread-safe pool of persistent workers (size: RST_KERNEL_WORKERS, default 4)."""
+
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.idle = []
+        self.size = int(os.getenv("RST_KERNEL_WORKERS", "4"))
+        self.sem = threading.Semaphore(self.size)
+
+    def run(self, python: str, job_path: str, timeout: float, max_jobs: int = 50) -> bool:
+        with self.sem:
+            with self.lock:
+                w = self.idle.pop() if self.idle else None
+            if w is None or w.proc.poll() is not None:
+                w = _Worker(python)
+            ok = w.run(job_path, timeout)
+            if ok and w.jobs < max_jobs:
+                with self.lock:
+                    self.idle.append(w)
+            else:
+                w.kill()   # timed out, crashed, or recycled
+            return ok
+
+
+_POOL = _Pool()
+
+
+class Kernel:
+    """Executes CadQuery programs in a separate process with tracing and requirement evaluation.
+
+    persistent=True (default; RST_KERNEL_PERSISTENT=0 disables) reuses long-lived worker
+    processes so CadQuery is not re-imported for every call; persistent=False starts a fresh
+    process per program (used for held-out evaluation).
+    """
+
+    def __init__(self, workdir: str, timeout: int = 60, python: Optional[str] = None, max_rows: int = 60,
+                 persistent: Optional[bool] = None):
         self.workdir = Path(workdir).resolve()
         self.workdir.mkdir(parents=True, exist_ok=True)
         self.timeout = timeout
         self.python = python or sys.executable
         self.max_rows = max_rows
+        self.persistent = (os.getenv("RST_KERNEL_PERSISTENT", "1") != "0") if persistent is None else persistent
         self.calls = 0
 
     def run(self, code: str, requirements: list[Requirement], name: str,
-            export: bool = True, summaries: bool = True) -> KernelResult:
+            export: bool = True, summaries: bool = True, autospec: bool = False) -> KernelResult:
         self.calls += 1
         script = self.workdir / f"{name}.py"
         job_path = self.workdir / f"{name}.job.json"
@@ -124,21 +203,30 @@ class Kernel:
             "out_path": str(out_path),
             "max_rows": self.max_rows,
             "summaries": summaries,
+            "autospec": autospec,
             "step_path": str(self.workdir / f"{name}.step") if export else None,
             "stl_path": str(self.workdir / f"{name}.stl") if export else None,
         }
         job_path.write_text(json.dumps(job), encoding="utf-8")
         t0 = time.time()
-        try:
-            proc = subprocess.run([self.python, "-m", "rst.runner", str(job_path)], cwd=str(self.workdir),
-                                  env=_clean_env(), capture_output=True, encoding="utf-8", errors="replace",
-                                  timeout=self.timeout)
-        except subprocess.TimeoutExpired:
-            return KernelResult(False, code, requirements, error=f"Execution timed out after {self.timeout} seconds",
-                                error_type="TimeoutError", time_ms=1000 * (time.time() - t0))
+        stderr = ""
+        if self.persistent:
+            if not _POOL.run(self.python, str(job_path), self.timeout) and not out_path.exists():
+                return KernelResult(False, code, requirements,
+                                    error=f"Execution timed out after {self.timeout} seconds",
+                                    error_type="TimeoutError", time_ms=1000 * (time.time() - t0))
+        else:
+            try:
+                proc = subprocess.run([self.python, "-m", "rst.runner", str(job_path)], cwd=str(self.workdir),
+                                      env=_clean_env(), capture_output=True, encoding="utf-8", errors="replace",
+                                      timeout=self.timeout)
+                stderr = proc.stderr or proc.stdout or ""
+            except subprocess.TimeoutExpired:
+                return KernelResult(False, code, requirements, error=f"Execution timed out after {self.timeout} seconds",
+                                    error_type="TimeoutError", time_ms=1000 * (time.time() - t0))
         if not out_path.exists():
             return KernelResult(False, code, requirements,
-                                error=(proc.stderr or proc.stdout or "runner produced no output")[-4000:],
+                                error=(stderr or "runner produced no output")[-4000:],
                                 error_type="SubprocessError", time_ms=1000 * (time.time() - t0))
         data = json.loads(out_path.read_text(encoding="utf-8"))
         if not data.get("success"):
@@ -151,5 +239,5 @@ class Kernel:
             geometry=data.get("geometry"), final_summary=data.get("final_summary"),
             step_path=data.get("step_path"), stl_path=data.get("stl_path"),
             coverage=data.get("coverage", {}), requirement_errors=data.get("requirement_errors", []),
-            time_ms=data.get("time_ms", 0.0),
+            time_ms=data.get("time_ms", 0.0), autospec=data.get("autospec"),
         )

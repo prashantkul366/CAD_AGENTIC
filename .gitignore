@@ -49,3 +49,5 @@ data/external/
 # RST: run outputs and caches
 runs/
 .pytest_cache/
+# Hard-Long authoring scratch
+data/hard_long/parts/scratch_*/

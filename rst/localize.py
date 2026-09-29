@@ -5,8 +5,12 @@ Three rules, applied per failing requirement i:
   1. Regression   (persistent / global kinds) i was true and turned false at
                   row t; the statement that produced row t broke it.
   2. Last touch   i was never satisfied (or is terminal): blame the last row
-                  whose *measurement* for i changed, i.e. the last operation that
-                  touched the geometry this requirement reads (its footprint).
+                  whose *measurement* for i changed. For size checks the
+                  measurement is the value itself; for feature checks it is the
+                  signature of the near miss (the feature that best approximates
+                  the requirement), so the blamed step is the one that produced
+                  the wrong feature, not a later step that added a different
+                  feature nearby ("near-miss provenance").
   3. Missing      the measurement never changed: no operation ever produced
                   the feature. Blame an insertion after the last statement.
 

@@ -32,6 +32,14 @@ def _legacy_geometry(A) -> dict:
     }
 
 
+def _autospec(A):
+    from .autospec import autospec
+    try:
+        return autospec(A)
+    except Exception as e:
+        return {"error": f"{type(e).__name__}: {e}"}
+
+
 def run_job(job: dict) -> dict:
     import cadquery as cq
     from .geometry import ShapeAnalysis
@@ -112,6 +120,7 @@ def run_job(job: dict) -> dict:
             "requirement_errors": errors,
             "geometry": _legacy_geometry(final_A),
             "final_summary": final_A.summary(),
+            "autospec": _autospec(final_A) if job.get("autospec") else None,
             "coverage": {"n_events": n_events, "n_rows": len(out_rows),
                          "lineage": bool(events), "n_statements": len(prog.statements) if prog else None},
         }
@@ -130,13 +139,50 @@ def run_job(job: dict) -> dict:
     return out
 
 
-def main(argv=None):
-    argv = argv or sys.argv[1:]
-    with open(argv[0], encoding="utf-8") as f:
+def _run_file(job_path: str) -> None:
+    with open(job_path, encoding="utf-8") as f:
         job = json.load(f)
     out = run_job(job)
     with open(job["out_path"], "w", encoding="utf-8") as f:
         json.dump(out, f)
+
+
+def serve() -> None:
+    """Persistent worker: read one job path per line on stdin, answer 'DONE <path>' on stdout.
+
+    CadQuery is imported once; each job runs in a fresh namespace from its own
+    directory, with the program's own printing captured so it cannot corrupt the protocol.
+    """
+    import contextlib
+    import io
+    import os
+    import cadquery  # noqa: F401  (import once)
+    real_out = sys.__stdout__
+    home = os.getcwd()
+    real_out.write("READY\n")
+    real_out.flush()
+    for line in sys.stdin:
+        path = line.strip()
+        if not path:
+            continue
+        try:
+            with open(path, encoding="utf-8") as f:
+                os.chdir(os.path.dirname(json.load(f)["script_path"]))
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                _run_file(path)
+        except Exception:
+            pass
+        os.chdir(home)   # never keep a job's directory open (Windows cannot delete an open directory)
+        real_out.write(f"DONE {path}\n")
+        real_out.flush()
+
+
+def main(argv=None):
+    argv = argv or sys.argv[1:]
+    if argv and argv[0] == "--serve":
+        serve()
+    else:
+        _run_file(argv[0])
 
 
 if __name__ == "__main__":
