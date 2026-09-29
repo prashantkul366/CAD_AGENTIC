@@ -24,10 +24,17 @@ programs that fail to run (counted as failures everywhere).
 Detailed PR ≥ 0.675 (+5 pts), Abstract PR ≥ 0.86 (+5 pts); RS and IR no worse.
 Human agreement (Table 4): CADTests RS AUC 0.928 vs Chamfer 0.663, CLIP 0.665, LVM judge 0.659.
 
-**Our evaluator vs the paper** (re-scoring the authors' released Claude-4.6-Sonnet programs with
-`scripts/rst/validate_cadtests_eval.py`; see `runs/validate_cadtests/summary.json`):
-references pass 100 % of their own tests (PR = RS = 1.0 on both splits); CADTests/detailed re-scores to
-PR 0.56 / RS 0.854 / IR 0.04 vs 0.59 / 0.882 / 0.005 in the paper (the gap is in the invalid ratio, being investigated).
+**Our evaluator vs the paper** (`scripts/rst/validate_cadtests_eval.py`):
+- The 200 reference programs pass 100 % of their own tests on both splits (PR = RS = 1.0, IR = 0).
+- The released `baselines/` folders for Claude-4.6-Sonnet (`CADTests`, `CADTests_Log`, top-level) are
+  **byte-identical** (400/400 files); their embedded export paths name the run `claude_react_cadtests_final_*`,
+  i.e. the **CADTests** row. Re-scored here: detailed PR 0.56 / RS 0.854 / IR 0.04 (paper 0.59 / 0.882 / 0.005),
+  abstract PR 0.755 / RS 0.932 / IR 0.025 (paper 0.765 / 0.953 / 0).
+- The whole gap is the invalid ratio: 8 detailed and 5 abstract released programs fail **under CadQuery 2.6.1**
+  (their own embedded self-checks fail on different geometry, one OCP constructor changed). CADTestBench only
+  requires `cadquery>=2.4`, so published numbers are environment-dependent.
+- **Like-for-like reference for our tables:** the released CADTests (Claude-4.6-Sonnet) outputs re-scored in our
+  environment — detailed PR 0.56, abstract PR 0.755 — alongside the paper's reported numbers.
 
 ## 2. Text2CAD test set (8,046 DeepCAD models; standard for trained text-to-CAD models)
 

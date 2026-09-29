@@ -4,6 +4,8 @@
 
 > **Fork note:** This is a fresh copy of [jabarkle/CADSmith](https://github.com/jabarkle/CADSmith), changed only so the agents can call Claude through **Amazon Bedrock** (see [Setup](#setup)). Pipeline logic, prompts, dataset and metrics are unchanged from the original.
 
+> **`research_idea` branch:** adds **RST (Requirement-Satisfaction Trajectories)** in `rst/`: requirements from the prompt are checked on every intermediate CAD state, which localises errors to single operations and repairs only those, without any target geometry. See [docs/research/RST_METHOD.md](docs/research/RST_METHOD.md), the [runbook](docs/research/RUNBOOK.md), [numbers to beat](docs/research/NUMBERS_TO_BEAT.md) and [dataset licences](docs/research/DATASETS.md). CADSmith itself is kept unchanged as a baseline.
+
 CADSmith takes a natural language description of a 3D part and produces manufacturing-ready CAD geometry. It works by having multiple LLM agents collaborate — one plans, one writes CadQuery code, one validates the geometry using real measurements from the CAD kernel, and one refines the code when something is off. The result is a closed loop that iterates until the part is dimensionally correct, not just visually plausible.
 
 ![Pipeline overview](assets/overview.jpg)

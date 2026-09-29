@@ -151,15 +151,21 @@ def _nearest_class(feats, diameter, tol):
         return list(feats)
     d = float(diameter)
     best = min(feats, key=lambda f: abs(f.diameter - d)).diameter
+    if abs(best - d) > 0.5 * d:          # no plausible size class: the feature is missing
+        return []
     return [f for f in feats if abs(f.diameter - best) <= max(tol, 1e-3)]
 
 
-def _near_miss(feats, target, d):
-    """The feature that best approximates 'diameter d on an axis through target' (position and size together)."""
-    if not feats:
-        return None
+def _near_miss(feats, target, d, extent):
+    """The feature that plausibly was meant as 'diameter d on an axis through target': close in position
+    (<= max(3d, 15% of the part)) and size (within 75%). None if nothing qualifies (the feature is missing)."""
     scale = max(d, 1.0)
-    return min(feats, key=lambda f: point_line_distance(target, f.point, f.axis) / scale + abs(f.diameter - d) / scale)
+    reach = max(3.0 * d, 0.15 * extent)
+    cands = [f for f in feats
+             if point_line_distance(target, f.point, f.axis) <= reach and abs(f.diameter - d) <= 0.75 * d]
+    if not cands:
+        return None
+    return min(cands, key=lambda f: point_line_distance(target, f.point, f.axis) / scale + abs(f.diameter - d) / scale)
 
 
 def _similar_size(f, diameter) -> bool:
@@ -308,7 +314,7 @@ def _p_hole_count(A, p):
            "the axis is ignored). Use one per hole when positions are given.",
            {"center": [25, 20, 0], "diameter": 6, "axis": "Z", "through": True})
 def _p_hole_at(A, p):
-    return _feature_at(A.holes(True), A.holes(False), p, "hole")
+    return _feature_at(A.holes(True), A.holes(False), p, "hole", A.extent)
 
 
 @predicate("boss_count", "persistent", ("count",), ("diameter", "axis", "tol"),
@@ -328,10 +334,10 @@ def _p_boss_count(A, p):
            "A complete convex cylinder of `diameter` whose axis passes through `center`; optional axial `height`.",
            {"center": [0, 0, 0], "diameter": 28, "axis": "Z", "height": 40})
 def _p_boss_at(A, p):
-    return _feature_at(A.bosses(True), A.bosses(False), p, "boss")
+    return _feature_at(A.bosses(True), A.bosses(False), p, "boss", A.extent)
 
 
-def _feature_at(full_feats, all_feats, p, label):
+def _feature_at(full_feats, all_feats, p, label, extent=100.0):
     d = float(p["diameter"])
     tol = _tol(p, d)
     target = _vec3(p["center"])
@@ -370,7 +376,7 @@ def _feature_at(full_feats, all_feats, p, label):
         partial = [f for f in all_feats if point_line_distance(target, f.point, f.axis) <= max(tol, 0.5)]
         msg = f"no complete {label} found" + (" (only a partial arc there)" if partial else "")
     cands = [f for f in all_feats if _axis_filter(f, axis)]
-    near = _near_miss(cands, target, d)
+    near = _near_miss(cands, target, d, extent)
     measure = None if near is None else _feat_brief(near) + [bool(near.full)]
     return Verdict(ok, {"distance": None if best is None else round(best_dist, 4),
                         "diameter": None if best is None else round(best.diameter, 4)}, msg, measure)

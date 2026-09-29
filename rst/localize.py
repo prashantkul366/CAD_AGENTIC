@@ -32,7 +32,13 @@ from typing import Optional
 from .matrix import Trajectory
 from .program import Program
 
-RULE_ORDER = {"regression": 0, "global": 1, "last_touch": 2, "missing": 3}
+RULE_ORDER = {"regression": 0, "global": 1, "last_touch": 2, "missing": 3, "frame": 4}
+
+# Requirements about one specific feature give sharper evidence than whole-part totals.
+LOCAL_TYPES = {"hole_at", "boss_at", "hole_count", "boss_count", "bolt_circle", "coaxial", "planar_face_at",
+               "material_at", "fillet_count", "single_solid", "valid"}
+# Operations that move the whole part without changing its shape.
+RIGID_OPS = {"translate", "rotate", "rotateAboutCenter", "moved", "located", "move", "transformed"}
 
 
 @dataclass
@@ -70,53 +76,116 @@ def _measure_key(m) -> str:
     return json.dumps(m, sort_keys=True, default=str)
 
 
-def blame_requirement(traj: Trajectory, i: int) -> Blame:
+def rigid_rows(traj: Trajectory) -> set:
+    """Rows produced by moving/rotating the whole part (same volume and face count as the row before)."""
+    rows = traj.result.rows
+    out = set()
+    for t in range(1, len(rows)):
+        a, b = rows[t - 1].summary or {}, rows[t].summary or {}
+        if rows[t].op in RIGID_OPS and a and b:
+            va, vb = a.get("volume") or 0, b.get("volume") or 0
+            if abs(va - vb) <= 1e-6 * max(abs(va), 1.0) and a.get("faces") == b.get("faces"):
+                out.add(t)
+    return out
+
+
+def _last_change(traj: Trajectory, i: int, skip=frozenset(), before: Optional[int] = None) -> Optional[int]:
+    """Last row whose measurement for requirement i changed (rows in `skip` do not count as changes)."""
+    last, prev = None, None
+    end = traj.T if before is None else before
+    for t in range(end):
+        m = traj.measure(t, i)
+        key = _measure_key(m)
+        if t == 0:
+            if m not in (None, [], {}, 0, False):
+                last = 0
+        elif key != prev and t not in skip:
+            last = t
+        prev = key
+    return last
+
+
+def _untouched_feature(traj: Trajectory, i: int) -> bool:
+    """True when a feature-level check reads the same value on every state since the base body and that
+    value says the feature is absent: a void that never appeared (material_at present=False), or a face
+    that never appeared anywhere near its required position (planar_face_at)."""
+    req = traj.reqs[i]
+    if req.type == "material_at":
+        return not bool(req.params.get("present", True))
+    if req.type == "planar_face_at":
+        near = traj.measure(traj.T - 1, i) or []
+        off = float(req.params.get("offset", 0.0))
+        extent = 0.0
+        s = traj.result.final_summary or {}
+        bb = s.get("bbox") or {}
+        extent = max(bb.get("xlen", 0), bb.get("ylen", 0), bb.get("zlen", 0), 1.0)
+        return not any(abs(float(x) - off) <= 0.25 * extent for x in near)
+    return False
+
+
+def blame_requirement(traj: Trajectory, i: int) -> list:
+    """Primary blame for failing requirement i, plus an alternative when the evidence is ambiguous."""
     tr = traj.track(i)
     rid = traj.reqs[i].id
     T = traj.T
     final_msg = traj.message(T - 1, i) if T else ""
+    rigid = rigid_rows(traj)
     if tr.regressions:
         t = tr.regressions[-1]           # the loss after which it never recovered
-        return Blame(_row_stmt(traj, t), t, "regression", [rid],
-                     [f"{rid} held until row {t - 1} and was broken at row {t}: {traj.message(t, i)}"])
+        b = Blame(_row_stmt(traj, t), t, "regression", [rid],
+                  [f"{rid} held until row {t - 1} and was broken at row {t}: {traj.message(t, i)}"])
+        if t not in rigid:
+            return [b]
+        # broken by a whole-part move: either the move is wrong, or the part was built in the wrong
+        # frame and held only by coincidence before the move -> the last shaping step is an alternative
+        b.rule = "frame"
+        alt_row = _last_change(traj, i, skip=rigid, before=t)
+        alts = []
+        if alt_row is not None:
+            alts.append(Blame(_row_stmt(traj, alt_row), alt_row, "last_touch", [rid],
+                              [f"{rid} held only before a whole-part move at row {t}; "
+                               f"the last shaping step was row {alt_row}"]))
+        return alts + [b]
     if tr.kind == "global" and tr.global_violations and tr.first_true is None:
         t = tr.global_violations[0]
-        return Blame(_row_stmt(traj, t), t, "global", [rid], [f"{rid} fails from row {t}: {final_msg}"])
-    # last-touch: last row whose measurement changed
-    last_change = None
-    prev = None
-    for t in range(T):
-        key = _measure_key(traj.measure(t, i))
-        if t == 0:
-            if traj.measure(t, i) not in (None, [], {}, 0, False):
-                last_change = 0
-        elif key != prev:
-            last_change = t
-        prev = key
-    if last_change is not None:
-        return Blame(_row_stmt(traj, last_change), last_change, "last_touch", [rid],
-                     [f"{rid} is not satisfied; the last operation that changed what it measures is row "
-                      f"{last_change}: {final_msg}"])
+        return [Blame(_row_stmt(traj, t), t, "global", [rid], [f"{rid} fails from row {t}: {final_msg}"])]
+    last = _last_change(traj, i)
+    if last == 0 and _untouched_feature(traj, i):
+        last = None    # nothing after the base body ever touched this feature: it is missing
+    if last is not None:
+        return [Blame(_row_stmt(traj, last), last, "last_touch", [rid],
+                      [f"{rid} is not satisfied; the last operation that changed what it measures is row "
+                       f"{last}: {final_msg}"])]
     last_stmt = _row_stmt(traj, T - 1) if T else None
-    return Blame(last_stmt, T - 1 if T else None, "missing", [rid],
-                 [f"{rid}: no operation ever produced this feature: {final_msg}"], insert=True)
+    return [Blame(last_stmt, T - 1 if T else None, "missing", [rid],
+                  [f"{rid}: no operation ever produced this feature: {final_msg}"], insert=True)]
 
 
-def localize(traj: Trajectory) -> list[Blame]:
-    """Ranked, merged blames for all failing requirements."""
-    blames: list[Blame] = []
+def localize(traj: Trajectory) -> list:
+    """Ranked, merged blames for all failing requirements.
+
+    Ranking: feature-level requirements before whole-part totals; then regressions, near-miss /
+    last-touch, missing features, whole-part-move ambiguities; earlier rows first.
+    """
+    local_of = {r.id: r.type in LOCAL_TYPES for r in traj.reqs}
+    blames = []
     for i in traj.failing():
-        b = blame_requirement(traj, i)
-        for other in blames:
-            if other.stmt == b.stmt and other.insert == b.insert:
-                other.req_ids += b.req_ids
-                other.reasons += b.reasons
-                if RULE_ORDER[b.rule] < RULE_ORDER[other.rule]:
-                    other.rule, other.row = b.rule, b.row
-                break
-        else:
-            blames.append(b)
-    blames.sort(key=lambda b: (RULE_ORDER[b.rule], b.row if b.row is not None else 1e9, -b.weight(traj)))
+        for b in blame_requirement(traj, i):
+            for other in blames:
+                if other.stmt == b.stmt and other.insert == b.insert:
+                    other.req_ids += [r for r in b.req_ids if r not in other.req_ids]
+                    other.reasons += b.reasons
+                    if RULE_ORDER[b.rule] < RULE_ORDER[other.rule]:
+                        other.rule, other.row = b.rule, b.row
+                    break
+            else:
+                blames.append(b)
+
+    def key(b):
+        tier = 0 if any(local_of.get(r) for r in b.req_ids) else 1
+        return (tier, RULE_ORDER[b.rule], b.row if b.row is not None else 1e9, -b.weight(traj))
+
+    blames.sort(key=key)
     return blames
 
 

@@ -70,6 +70,30 @@ class LLM:
         return response_text(response)
 
 
+    def complete_blocks(self, system: str, blocks: list, role: str, temperature: Optional[float] = None,
+                        max_tokens: Optional[int] = None) -> str:
+        """Like complete(), with a list of content blocks (text and base64 images)."""
+        from autofab.llm import get_client, response_text
+        kwargs = dict(model=self.model, max_tokens=max_tokens or self.max_tokens, system=system,
+                      messages=[{"role": "user", "content": blocks}])
+        t = self.temperature if temperature is None else temperature
+        if t is not None:
+            kwargs["temperature"] = t
+        t0 = time.time()
+        response = get_client().messages.create(**kwargs)
+        usage = getattr(response, "usage", None)
+        self.usage.add(role, getattr(usage, "input_tokens", 0) or 0, getattr(usage, "output_tokens", 0) or 0,
+                       time.time() - t0)
+        return response_text(response)
+
+
+def image_block(png_path: str) -> dict:
+    import base64
+    with open(png_path, "rb") as f:
+        data = base64.standard_b64encode(f.read()).decode("utf-8")
+    return {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": data}}
+
+
 class ScriptedLLM(LLM):
     """Deterministic stand-in: `fn(role, system, user) -> str`."""
 
@@ -84,3 +108,7 @@ class ScriptedLLM(LLM):
         out = self.fn(role, system, user)
         self.usage.add(role, len(system + user) // 4, len(out) // 4, 0.0)
         return out
+
+    def complete_blocks(self, system: str, blocks: list, role: str, temperature=None, max_tokens=None) -> str:
+        text = "\n".join(b.get("text", "") for b in blocks if b.get("type") == "text")
+        return self.complete(system, text, role)

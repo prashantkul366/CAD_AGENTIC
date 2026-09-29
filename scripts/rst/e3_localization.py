@@ -92,6 +92,7 @@ def main():
             skipped["too_few_statements"] += 1
             continue
         extent = max(ref_eval.geometry["bounding_box"][k] for k in ("xlen", "ylen", "zlen"))
+        ref_modifying = set(modifying_statements(Trajectory(ref_eval)))
         prog = Program(code)
         for m in make_mutants(code, args.n_mutants, seed=args.seed, extent=extent):
             res = kernel.run(m.code, keep, f"{e['id']}_m{len(records)}", export=False)
@@ -103,23 +104,37 @@ def main():
                 continue
             traj = Trajectory(res)
             blames = localize(traj)
-            top = blames[0] if blames else None
+            prog_m = Program(m.code)
             is_delete = m.kind == "feature_delete"
-            matrix_hit = top is not None and (top.stmt == m.stmt or (is_delete and top.insert))
-            matrix_top3 = any(b.stmt == m.stmt or (is_delete and b.insert) for b in blames[:3])
+
+            def hit(stmt, insert=False):
+                """Region hit: the injected statement is inside the repair region of the blamed one
+                (blamed statement + its definitions). Deleted features: a blame next to the gap, or an insertion."""
+                if is_delete:
+                    return bool(insert) or (stmt is not None and abs(stmt - m.stmt) <= 1)
+                if stmt is None:
+                    return False
+                return m.stmt == stmt or m.stmt in prog_m.dependencies(stmt, 2)
+
+            top = blames[0] if blames else None
+            rnd = random_localize(traj, rng)
+            last = last_statement_localize(traj)
             rec = {
                 "id": e["id"], "kind": m.kind, "stmt": m.stmt, "detail": m.detail,
+                "param_mutant": m.stmt not in ref_modifying and not is_delete,
                 "n_modifying": len(modifying_statements(traj)),
                 "matrix": top.stmt if top else None, "matrix_rule": top.rule if top else None,
-                "matrix_hit": matrix_hit, "matrix_top3": matrix_top3,
-                "random_hit": random_localize(traj, rng) == m.stmt,
-                "last_hit": last_statement_localize(traj) == m.stmt,
+                "matrix_strict": top is not None and top.stmt == m.stmt,
+                "matrix_hit": top is not None and hit(top.stmt, top.insert),
+                "matrix_top3": any(hit(b.stmt, b.insert) for b in blames[:3]),
+                "random_hit": hit(rnd), "last_hit": hit(last),
                 "n_failing": len(traj.failing()),
             }
             if args.llm:
-                pick = llm_localize(llm, e["prompt"], Program(m.code), traj)
+                pick = llm_localize(llm, e["prompt"], prog_m, traj)
                 rec["llm"] = pick
-                rec["llm_hit"] = pick == m.stmt
+                rec["llm_strict"] = pick == m.stmt
+                rec["llm_hit"] = hit(pick)
             records.append(rec)
             print(json.dumps(rec))
 
@@ -128,8 +143,11 @@ def main():
         return round(sum(bool(r[key]) for r in rows) / len(rows), 4) if rows else None
 
     summary = {"tag": tag, "n_mutants": len(records), "skipped": dict(skipped)}
-    for key in ("matrix_hit", "matrix_top3", "llm_hit", "random_hit", "last_hit"):
+    for key in ("matrix_hit", "matrix_strict", "matrix_top3", "llm_hit", "llm_strict", "random_hit", "last_hit"):
         summary[key] = rate(key, records)
+    for flag, name in ((True, "parameter_mutants"), (False, "operation_mutants")):
+        sub = [r for r in records if r.get("param_mutant") == flag]
+        summary[name] = {"n": len(sub), **{k: rate(k, sub) for k in ("matrix_hit", "llm_hit", "random_hit", "last_hit")}}
     summary["by_kind"] = {k: {key: rate(key, [r for r in records if r["kind"] == k])
                               for key in ("matrix_hit", "llm_hit", "random_hit", "last_hit")}
                           for k in sorted({r["kind"] for r in records})}

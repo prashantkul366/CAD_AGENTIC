@@ -37,6 +37,7 @@ class Statement:
     defines: set = field(default_factory=set)
     uses: set = field(default_factory=set)
     is_import: bool = False
+    is_param: bool = False      # a plain value assignment (no calls), e.g. `height = 1.5`
 
     def label(self) -> str:
         return f"S{self.idx}"
@@ -59,6 +60,9 @@ class Program:
             st = Statement(idx=i, start=start, end=end, code=code,
                            is_import=isinstance(node, (ast.Import, ast.ImportFrom)))
             st.defines, st.uses = _def_use(node)
+            st.is_param = (isinstance(node, (ast.Assign, ast.AnnAssign))
+                           and getattr(node, "value", None) is not None
+                           and not any(isinstance(n, ast.Call) for n in ast.walk(node.value)))
             self.statements.append(st)
 
     # --- lookups ------------------------------------------------------------
@@ -79,16 +83,31 @@ class Program:
         the preceding construction step, not a tool body.
         """
         st = self.statements[idx]
-        deps = []
+        bodies, params = [], []
         for name in sorted(st.uses - st.defines):
             for j in range(idx - 1, -1, -1):
                 other = self.statements[j]
                 if name in other.defines and not other.is_import:
-                    if j not in deps:
-                        deps.append(j)
+                    target = params if other.is_param else bodies
+                    if j not in target:
+                        target.append(j)
                     break
-        deps.sort(reverse=True)
-        return deps[:max_extra]
+        # plain parameter definitions are cheap to include in full (transitively: radius = diameter / 2
+        # pulls in diameter); body definitions are capped
+        todo = list(params)
+        seen = set(params)
+        while todo:
+            j = todo.pop()
+            for name in self.statements[j].uses - self.statements[j].defines:
+                for k in range(j - 1, -1, -1):
+                    other = self.statements[k]
+                    if name in other.defines:
+                        if other.is_param and k not in seen:
+                            seen.add(k)
+                            todo.append(k)
+                        break
+        bodies.sort(reverse=True)
+        return sorted(set(bodies[:max_extra]) | seen, reverse=True)
 
     def numbered(self, highlight: Optional[set] = None) -> str:
         """Program text with a statement label before each top-level statement."""

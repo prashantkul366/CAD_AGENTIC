@@ -58,6 +58,8 @@ PRESETS = {
     "rst_accept_always": ("rst", {"accept": "always"}),
     "rst_accept_improve": ("rst", {"accept": "improve"}),
     "tests_log_best": ("tests_log", {"return_policy": "best"}),
+    # CADCodeVerify (ICLR'25) re-implemented from the paper's prompts
+    "cadcodeverify": ("ccv", {}),
     # CADSmith with bugs fixed (its own pipeline and budget)
     "cadsmith_fixed": ("cadsmith", {"use_vision": True, "no_leak": False}),
     "cadsmith_fixed_noleak": ("cadsmith", {"use_vision": True, "no_leak": True}),
@@ -103,6 +105,15 @@ def dry_llm() -> ScriptedLLM:
             return 'import cadquery as cq\nresult = cq.Workplane("XY").box(10, 10, 10)\n'
         if role == "llm_localize":
             return '{"statement": "S1"}'
+        if role == "ccv_questions":
+            return "1. Is the object a box?\n2. Does the object have a hole on top?"
+        if role == "ccv_answer":
+            return ("1. **Is the object a box?**\n- **Answer:** Yes\n- **Reasoning:** ok\n"
+                    "2. **Does the object have a hole on top?**\n- **Answer:** No\n- **Reasoning:** small")
+        if role == "ccv_feedback":
+            return "Make the top hole larger."
+        if role == "ccv_refine":
+            return 'import cadquery as cq\nresult = cq.Workplane("XY").box(12, 10, 10)\nresult = result.faces(">Z").workplane().hole(3)\n'
         return ""
     return ScriptedLLM(fn)
 
@@ -165,7 +176,15 @@ def run_task(args, exp: Path, entry: dict, seed: int, methods: list[str]):
         out.parent.mkdir(parents=True, exist_ok=True)
         t0 = time.time()
         try:
-            if base == "cadsmith":
+            if base == "ccv":
+                from rst.cadcodeverify import run_cadcodeverify
+                cfg = RSTConfig(max_llm_calls=args.budget, seed=seed)
+                kernel = Kernel(str(work / m), timeout=args.timeout)
+                eng = Engine(entry["prompt"], kernel, make_llm(args), tag)
+                rec = run_cadcodeverify(eng, p0["code"], cfg, pre_p0).to_dict()
+                if rec.get("final"):
+                    rec["final"].pop("rows", None)
+            elif base == "cadsmith":
                 from rst.cadsmith_fixed import run_cadsmith_fixed
                 if args.dry_run:
                     raise RuntimeError("cadsmith_fixed cannot run in --dry-run")
