@@ -156,9 +156,56 @@ def blame_requirement(traj: Trajectory, i: int) -> list:
         return [Blame(_row_stmt(traj, last), last, "last_touch", [rid],
                       [f"{rid} is not satisfied; the last operation that changed what it measures is row "
                        f"{last}: {final_msg}"])]
+    by_value = value_provenance(traj, i)
+    if by_value is not None:
+        return [Blame(by_value, None, "missing", [rid],
+                      [f"{rid}: the feature never appeared where required; S{by_value} uses its dimensions "
+                       f"and position, so it probably builds it in the wrong place: {final_msg}"])]
     last_stmt = _row_stmt(traj, T - 1) if T else None
     return [Blame(last_stmt, T - 1 if T else None, "missing", [rid],
                   [f"{rid}: no operation ever produced this feature: {final_msg}"], insert=True)]
+
+
+def _close(a: float, vals: set) -> bool:
+    return any(abs(a - v) <= 1e-6 * max(1.0, abs(a)) for v in vals)
+
+
+def value_provenance(traj: Trajectory, i: int):
+    """Statement whose numbers match a missing feature's size AND position (e.g. hole(9) with (40, -10)).
+
+    Used only when the matrix says a feature never appeared: the statement that was meant to make it
+    is usually still there, building it on the wrong plane or face. Requiring a position match keeps a
+    genuinely deleted feature (whose numbers are gone) classified as missing.
+    """
+    req = traj.reqs[i]
+    p = req.params
+    if req.type not in ("hole_at", "boss_at", "bolt_circle"):
+        return None
+    try:
+        prog = Program(traj.result.code)
+    except SyntaxError:
+        return None
+    d = float(p.get("diameter", 0) or 0)
+    size_keys = [x for x in (d, d / 2.0) if x > 0]
+    if req.type == "bolt_circle":
+        pd = float(p.get("pitch_diameter", 0) or 0)
+        pos_keys = [x for x in (pd, pd / 2.0) if x > 0]
+    else:
+        pos_keys = [abs(float(c)) for c in (p.get("center") or []) if abs(float(c)) > 1e-9]
+    best, best_score = None, 0
+    for idx, vals in enumerate(prog.statement_values()):
+        if prog.statements[idx].is_param or prog.statements[idx].is_import:
+            continue
+        absvals = {abs(v) for v in vals}
+        if not any(_close(k, absvals) for k in size_keys):
+            continue
+        pos_hits = sum(1 for k in pos_keys if _close(k, absvals))
+        if pos_keys and pos_hits == 0:
+            continue
+        score = 1 + pos_hits
+        if score >= best_score:        # ties -> the later statement
+            best, best_score = idx, score
+    return best
 
 
 def localize(traj: Trajectory) -> list:

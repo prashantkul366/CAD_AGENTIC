@@ -52,7 +52,7 @@ def main():
     ap.add_argument("--out", default="runs/e3")
     args = ap.parse_args()
 
-    tag = f"{args.dataset}_{args.spec}{'_thr' if args.threaded else ''}_s{args.seed}"
+    tag = f"{args.dataset}_{args.spec}{'_thr' if args.threaded else ''}{'_llm' if args.llm else ''}_s{args.seed}"
     out_dir = Path(args.out) / tag
     out_dir.mkdir(parents=True, exist_ok=True)
     kernel = Kernel(str(out_dir / "work"), timeout=120)

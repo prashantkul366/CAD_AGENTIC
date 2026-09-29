@@ -109,6 +109,38 @@ class Program:
         bodies.sort(reverse=True)
         return sorted(set(bodies[:max_extra]) | seen, reverse=True)
 
+    def statement_values(self) -> list[set]:
+        """Numbers each statement uses: its numeric literals plus the values of plain parameters it reads
+        (parameters are evaluated in order, e.g. radius = diameter / 2)."""
+        import math
+        env: dict = {}
+        out = []
+        for st, node in zip(self.statements, self.tree.body):
+            vals: set = set()
+            for n in ast.walk(node):
+                if isinstance(n, ast.Constant) and isinstance(n.value, (int, float)) and not isinstance(n.value, bool):
+                    vals.add(round(float(n.value), 6))
+                elif isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load) and n.id in env:
+                    v = env[n.id]
+                    for x in (v if isinstance(v, (tuple, list)) else [v]):
+                        if isinstance(x, (int, float)) and not isinstance(x, bool):
+                            vals.add(round(float(x), 6))
+            if st.is_param and isinstance(node, (ast.Assign, ast.AnnAssign)):
+                try:
+                    value = eval(compile(ast.Expression(node.value), "<param>", "eval"),
+                                 {"__builtins__": {}, "math": math}, dict(env))
+                    targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+                    for t in targets:
+                        if isinstance(t, ast.Name):
+                            env[t.id] = value
+                    for x in (value if isinstance(value, (tuple, list)) else [value]):
+                        if isinstance(x, (int, float)) and not isinstance(x, bool):
+                            vals.add(round(float(x), 6))
+                except Exception:
+                    pass
+            out.append(vals)
+        return out
+
     def numbered(self, highlight: Optional[set] = None) -> str:
         """Program text with a statement label before each top-level statement."""
         out = []

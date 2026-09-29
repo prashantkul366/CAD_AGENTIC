@@ -49,6 +49,16 @@ true it should stay true, e.g. a hole at a position), **terminal** (only meaning
 | `scripts/rst/evaluate_run.py` | held-out scoring of a run, paired tests, complexity bins | CPU |
 | `scripts/rst/validate_cadtests_eval.py` | checks our CADTestBench evaluator against the paper's Table 3 | CPU |
 
+## Blame-rule development protocol (to report in the paper)
+
+The blame rules were developed by inspecting E3 misses on **mutant seed 0** (Hard-Long and CADTestBench
+references). Changes made during development: near-miss provenance; plausibility limits on near misses;
+feature-level requirements ranked before whole-part totals; features untouched since the base body count as
+missing; alternatives for regressions at whole-part moves; transitive parameter regions; value provenance
+for features built on the wrong plane (size + position literals). **The rules were then frozen** (commit after
+`ffd31e9`), and the reported E3 numbers use **mutant seed 1**, which no rule was tuned on. A second fresh set
+of parts (Hard-Long v1) would make this cleaner still.
+
 ## Not yet implemented
 
 Learning components (kernel-labelled step scorer / PRM, process-vs-outcome GRPO) — deliberately after the
