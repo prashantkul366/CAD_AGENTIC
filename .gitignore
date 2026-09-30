@@ -53,3 +53,4 @@ runs/
 data/hard_long/parts/scratch_*/
 # Hard-Long authoring batches (merged into hard_long_v0.jsonl)
 data/hard_long/parts/
+data/hard_long/parts_v1/
