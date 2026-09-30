@@ -1,7 +1,9 @@
 """Benchmark loaders. Every entry is a dict with at least: id, prompt, reference_code, dataset.
 
   cadsmith                 CADSmith dataset_v2 (100 prompts, in repo)
-  hardlong                 Hard-Long seed split (ours, in repo: data/hard_long/)
+  hardlong                 Hard-Long v0, 30 parts (ours, in repo: data/hard_long/); rules were developed on it
+  hardlong-v1              Hard-Long v1, 40 further parts written after the blame rules were frozen (held-out)
+  hardlong-all             v0 + v1
   cadtestbench-detailed    CADTestBench / CADPrompt, detailed prompts   (fetched to data/external/)
   cadtestbench-abstract    CADTestBench / CADPrompt, abstract prompts   (fetched to data/external/)
   text2cad                 Text2CAD test subset with CadQuery references (fetched to data/external/)
@@ -34,6 +36,10 @@ def load(name: str, limit: int = 0, ids=None) -> list[dict]:
             rows += _jsonl(DATA / "dataset_v2" / fn)
     elif name == "hardlong":
         rows = _jsonl(DATA / "hard_long" / "hard_long_v0.jsonl")
+    elif name == "hardlong-v1":
+        rows = _jsonl(DATA / "hard_long" / "hard_long_v1.jsonl")
+    elif name == "hardlong-all":
+        rows = _jsonl(DATA / "hard_long" / "hard_long_v0.jsonl") + _jsonl(DATA / "hard_long" / "hard_long_v1.jsonl")
     elif name.startswith("cadtestbench-"):
         rows = _jsonl(EXTERNAL / "cadtestbench" / f"{name.split('-', 1)[1]}.jsonl")
     elif name == "text2cad":

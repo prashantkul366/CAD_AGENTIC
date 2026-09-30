@@ -30,7 +30,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from rst.datasets import load
 from rst.kernel import Kernel
-from rst.localize import last_statement_localize, llm_localize, localize, modifying_statements, random_localize
+from rst.localize import (SBFL_FORMULAS, last_statement_localize, llm_localize, localize, modifying_statements,
+                          random_localize, region_chains, sbfl_rank)
 from rst.matrix import Trajectory
 from rst.mutants import make_mutants, normalised
 from rst.program import Program
@@ -50,6 +51,7 @@ def main():
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--out", default="runs/e3")
+    ap.add_argument("--rules", default=None, help="blame-rule version (default: the method's, rst.localize.RULES_VERSION)")
     args = ap.parse_args()
 
     tag = f"{args.dataset}_{args.spec}{'_thr' if args.threaded else ''}{'_llm' if args.llm else ''}_s{args.seed}"
@@ -61,6 +63,10 @@ def main():
         from rst.llm import LLM
         llm = LLM(model=args.model, temperature=0.0)
     rng = random.Random(args.seed)
+    from rst.localize import RULES, RULES_VERSION
+    rules = args.rules or RULES_VERSION
+    assert rules in RULES, f"unknown rules {rules}"
+    rng_sbfl = random.Random(args.seed + 1000)    # own stream: adding SBFL leaves the other baselines unchanged
     records = []
     skipped = defaultdict(int)
 
@@ -103,7 +109,7 @@ def main():
                 skipped["mutant_equivalent_under_spec"] += 1
                 continue
             traj = Trajectory(res)
-            blames = localize(traj)
+            blames = localize(traj, rules)
             prog_m = Program(m.code)
             is_delete = m.kind == "feature_delete"
 
@@ -114,7 +120,7 @@ def main():
                     return bool(insert) or (stmt is not None and abs(stmt - m.stmt) <= 1)
                 if stmt is None:
                     return False
-                return m.stmt == stmt or m.stmt in prog_m.dependencies(stmt, 2)
+                return m.stmt == stmt or m.stmt in prog_m.dependencies(stmt, 2, chains=region_chains(rules))
 
             top = blames[0] if blames else None
             rnd = random_localize(traj, rng)
@@ -130,6 +136,11 @@ def main():
                 "random_hit": hit(rnd), "last_hit": hit(last),
                 "n_failing": len(traj.failing()),
             }
+            for name in SBFL_FORMULAS:
+                ranked, tied = sbfl_rank(traj, name, rng_sbfl)
+                rec[f"{name}_hit"] = bool(ranked) and hit(ranked[0])
+                rec[f"{name}_top3"] = any(hit(s) for s in ranked[:3])
+                rec[f"{name}_exp"] = sum(hit(s) for s in tied) / len(tied) if tied else 0.0   # expected under random ties
             if args.llm:
                 pick = llm_localize(llm, e["prompt"], prog_m, traj)
                 rec["llm"] = pick
@@ -142,16 +153,21 @@ def main():
         rows = [r for r in rows if key in r]
         return round(sum(bool(r[key]) for r in rows) / len(rows), 4) if rows else None
 
-    from rst.localize import RULES_VERSION
-    summary = {"tag": tag, "rules": RULES_VERSION, "n_mutants": len(records), "skipped": dict(skipped)}
-    (out_dir / "RULES").write_text(RULES_VERSION, encoding="utf-8")
-    for key in ("matrix_hit", "matrix_strict", "matrix_top3", "llm_hit", "llm_strict", "random_hit", "last_hit"):
-        summary[key] = rate(key, records)
+    def mean(key, rows):
+        rows = [r for r in rows if key in r]
+        return round(sum(r[key] for r in rows) / len(rows), 4) if rows else None
+
+    summary = {"tag": tag, "rules": rules, "n_mutants": len(records), "skipped": dict(skipped)}
+    (out_dir / "RULES").write_text(rules, encoding="utf-8")
+    sbfl_keys = [f"{n}_{k}" for n in SBFL_FORMULAS for k in ("hit", "top3", "exp")]
+    for key in ("matrix_hit", "matrix_strict", "matrix_top3", "llm_hit", "llm_strict", "random_hit", "last_hit",
+                *sbfl_keys):
+        summary[key] = mean(key, records) if key.endswith("_exp") else rate(key, records)
     for flag, name in ((True, "parameter_mutants"), (False, "operation_mutants")):
         sub = [r for r in records if r.get("param_mutant") == flag]
         summary[name] = {"n": len(sub), **{k: rate(k, sub) for k in ("matrix_hit", "llm_hit", "random_hit", "last_hit")}}
     summary["by_kind"] = {k: {key: rate(key, [r for r in records if r["kind"] == k])
-                              for key in ("matrix_hit", "llm_hit", "random_hit", "last_hit")}
+                              for key in ("matrix_hit", "llm_hit", "random_hit", "last_hit", "ochiai_hit", "dstar_hit")}
                           for k in sorted({r["kind"] for r in records})}
     summary["by_rule"] = {k: {"n": sum(r["matrix_rule"] == k for r in records),
                               "matrix_hit": rate("matrix_hit", [r for r in records if r["matrix_rule"] == k])}

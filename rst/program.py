@@ -75,15 +75,18 @@ class Program:
                 return st.idx
         return None
 
-    def dependencies(self, idx: int, max_extra: int = 2) -> list[int]:
+    def dependencies(self, idx: int, max_extra: int = 2, chains: bool = False) -> list[int]:
         """Statements (before idx) that define auxiliary names used by statement idx, nearest first.
 
         Names the statement itself reassigns (the main variable in
         `result = result.op(...)`) are excluded: their previous definition is
         the preceding construction step, not a tool body.
+        chains=True (region v3): a tool body built over several statements (`ribs = ...`,
+        `ribs = ribs.union(...)`, ...) counts as one body and is included in full.
         """
         st = self.statements[idx]
         bodies, params = [], []
+        chain_of: dict = {}
         for name in sorted(st.uses - st.defines):
             for j in range(idx - 1, -1, -1):
                 other = self.statements[j]
@@ -91,6 +94,13 @@ class Program:
                     target = params if other.is_param else bodies
                     if j not in target:
                         target.append(j)
+                    if chains and not other.is_param:
+                        k = j
+                        while name in self.statements[k].uses:      # name = name.op(...): keep walking back
+                            k = next((m for m in range(k - 1, -1, -1) if name in self.statements[m].defines), None)
+                            if k is None:
+                                break
+                            chain_of.setdefault(j, set()).add(k)
                     break
         # plain parameter definitions are cheap to include in full (transitively: radius = diameter / 2
         # pulls in diameter); body definitions are capped
@@ -107,7 +117,10 @@ class Program:
                             todo.append(k)
                         break
         bodies.sort(reverse=True)
-        return sorted(set(bodies[:max_extra]) | seen, reverse=True)
+        kept = set(bodies[:max_extra])
+        for j in list(kept):
+            kept |= chain_of.get(j, set())
+        return sorted(kept | seen, reverse=True)
 
     def statement_values(self) -> list[set]:
         """Numbers each statement uses: its numeric literals plus the values of plain parameters it reads

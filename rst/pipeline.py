@@ -26,7 +26,8 @@ from typing import Optional
 from . import roles
 from .kernel import Kernel, KernelResult
 from .llm import LLM, Usage
-from .localize import Blame, last_statement_localize, llm_localize, localize, random_localize
+from .localize import (RULES_VERSION, Blame, last_statement_localize, llm_localize, localize, random_localize,
+                       region_chains)
 from .matrix import Trajectory
 from .program import Program
 
@@ -40,6 +41,7 @@ class RSTConfig:
     repair_scope: str = "local"      # local | whole
     accept: str = "monotone"         # monotone | improve | always
     max_region_deps: int = 2         # extra statements (definitions) editable with the blamed one
+    rules: str = RULES_VERSION       # blame-rule version (rst.localize.RULES); v3 also widens the region to tool-body chains
     return_policy: str = "best"      # best | last
     seed: int = 0
 
@@ -310,7 +312,7 @@ def _blame_key(b: Blame) -> tuple:
 
 
 def _choose_blames(cfg: RSTConfig, eng: Engine, prog: Program, traj: Trajectory, rng, budget) -> list[Blame]:
-    blames = localize(traj)
+    blames = localize(traj, cfg.rules)
     if cfg.localizer == "matrix" or not blames:
         return blames
     failing_ids = [r.id for i, r in enumerate(traj.reqs) if i in traj.failing()]
@@ -331,7 +333,7 @@ def _propose(cfg: RSTConfig, eng: Engine, prog: Program, traj: Trajectory, cur: 
     failures = _failure_lines(cur, ids)
     if cfg.repair_scope == "whole" or blame.stmt is None:
         return roles.refine_whole(eng.llm, eng.prompt, code, failures, _passing_lines(cur), None)
-    edit_set = [blame.stmt] + prog.dependencies(blame.stmt, cfg.max_region_deps)
+    edit_set = [blame.stmt] + prog.dependencies(blame.stmt, cfg.max_region_deps, chains=region_chains(cfg.rules))
     edit_set = [s for s in edit_set if 0 <= s < len(prog.statements)]
     rows = cur.rows
     t = blame.row if blame.row is not None else len(rows) - 1

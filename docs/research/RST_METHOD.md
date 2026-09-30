@@ -58,9 +58,31 @@ missing; alternatives for regressions at whole-part moves; transitive parameter 
 for features built on the wrong plane (size + position literals); and (v2) for non-monotone constructions,
 when a lost requirement's feature is touched again later, that later step is blamed first. **The rules are
 frozen at v2**, developed only on seed 0; reported E3 numbers use **mutant seeds 1 and 2**, which no rule was
-tuned on. A second fresh set of parts (Hard-Long v1) would make this cleaner still.
+tuned on.
+
+**v3** (frozen 2026-10-01, before any held-out number was computed with it; developed on seed 0 only):
+- *unexplained operations*: when a feature never appears and no statement's numbers match it (or only the
+  base body ever touched it), blame the first step that changed no requirement's measurement or verdict,
+  e.g. a cut whose tool is on the wrong plane or misses the part;
+- *whole tool-body chains*: a tool body built over several statements (`ribs = ribs.union(...)`) is in the
+  repair region in full (`Program.dependencies(chains=True)`).
+
+Seed-0 effect, first guess (every localiser scored with the same region): Hard-Long 55.9 → 60.2 %,
+CADTestBench 54.3 → 57.2 %. v2 stays the method's default (`RULES_VERSION`) until v3 is confirmed on held-out
+data: mutant seeds 1–2 of Hard-Long v0 and CADTestBench, and the 40 Hard-Long v1 parts, which were written after
+v2 was frozen and never inspected during rule development. `rst_v3` in `run_benchmark.py` runs the method with v3.
+
+**Re-scoring without re-execution.** Every E3 fault keeps its program, requirements and full trajectory under
+`runs/e3/<tag>/work/`. `scripts/rst/e3_rescore.py --rules <v> [--region <v>]` rebuilds the trajectories and
+applies any rule version and every baseline (random replays its original stream) in about a minute; with
+`--check` it reproduces the stored records exactly (0 differences on all held-out runs).
+
+**Spectrum-based fault localisation baselines** (`sbfl_rank`): Ochiai, Tarantula and DStar with requirements
+as tests; a statement covers a requirement when it changed that requirement's measurement or verdict.
+On the development seed, SBFL is as good as the matrix on short CADTestBench programs (Ochiai 56.9 % vs v2 54.3 %,
+v3 57.2 %) but far behind on Hard-Long (39 % vs 56–60 %): the blame rules pay off on long programs.
 
 ## Not yet implemented
 
 Learning components (kernel-labelled step scorer / PRM, process-vs-outcome GRPO) — deliberately after the
-week-5 go/no-go; CADCodeVerify re-implementation; open-weight baselines (CAD-Coder, ProCAD) inference on a GPU.
+week-5 go/no-go. E2 (DSL fidelity of self-written requirements against CADTests; needs Bedrock).

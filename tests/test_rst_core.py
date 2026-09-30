@@ -141,6 +141,47 @@ def test_trace_and_blame(tmp_path):
     assert blames[0].stmt == 2 and set(blames[0].req_ids) == {"holes", "h1"}
 
 
+def test_sbfl_spectrum(tmp_path):
+    import random
+    from rst.localize import sbfl_rank, spectrum
+    reqs, _ = load_requirements(PLATE_REQS)
+    traj = Trajectory(Kernel(str(tmp_path)).run(PLATE_BUGGY, reqs, "p"))
+    ids = [r.id for r in traj.reqs]
+    cover = spectrum(traj)
+    assert {ids[i] for i in cover[2][0]} == {"holes", "h1"}      # the wrong-diameter holes change both checks
+    ranked, tied = sbfl_rank(traj, "ochiai", random.Random(0))
+    assert ranked[0] == 2 and tied == [2]
+
+
+def test_v3_blames_unexplained_cut(tmp_path):
+    code = '''import cadquery as cq
+result = cq.Workplane("XY").box(40, 40, 10, centered=(True, True, False))
+pin = cq.Workplane("XZ").center(30, 5).circle(3).extrude(10)
+result = result.cut(pin)
+result = result.faces(">Z").workplane().hole(6)
+'''
+    reqs, _ = load_requirements([
+        {"id": "valid", "type": "valid"},
+        {"id": "cross", "type": "material_at", "params": {"point": [10, 0, 5], "present": False}},
+        {"id": "bore", "type": "hole_at", "params": {"center": [0, 0, 0], "diameter": 6, "axis": "Z"}},
+    ])
+    traj = Trajectory(Kernel(str(tmp_path)).run(code, reqs, "u"))
+    (b2,) = localize(traj, "v2")
+    assert b2.rule == "missing" and b2.insert
+    b3 = localize(traj, "v3")[0]
+    assert b3.rule == "unexplained" and b3.stmt == 3 and not b3.insert
+    prog = Program(code)
+    assert 2 in prog.dependencies(3, 2, chains=True)
+
+
+def test_region_chains_follow_tool_body():
+    prog = Program("import cadquery as cq\nresult = cq.Workplane().box(9, 9, 9)\nribs = cq.Workplane().box(1, 1, 1)\n"
+                   "ribs = ribs.union(ribs.translate((2, 0, 0)))\nribs = ribs.union(ribs.mirror('XZ'))\n"
+                   "result = result.union(ribs)\n")
+    assert prog.dependencies(5, 2) == [4]
+    assert prog.dependencies(5, 2, chains=True) == [4, 3, 2]
+
+
 def test_regression_blame(tmp_path):
     code = '''import cadquery as cq
 result = cq.Workplane("XY").box(40, 40, 10, centered=(True, True, False))

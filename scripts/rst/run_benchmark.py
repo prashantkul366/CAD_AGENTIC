@@ -51,6 +51,7 @@ PRESETS = {
     "best_of_n": ("best_of_n", {}),
     "rst": ("rst", {}),
     # ablations
+    "rst_v3": ("rst", {"rules": "v3"}),
     "rst_llm_localize": ("rst", {"localizer": "llm"}),
     "rst_random_localize": ("rst", {"localizer": "random"}),
     "rst_last_localize": ("rst", {"localizer": "last"}),

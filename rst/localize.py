@@ -12,18 +12,28 @@ Three rules, applied per failing requirement i:
                   the wrong feature, not a later step that added a different
                   feature nearby ("near-miss provenance").
   3. Missing      the measurement never changed: no operation ever produced
-                  the feature. Blame an insertion after the last statement.
+                  the feature. Blame the statement whose numbers match the
+                  feature (value provenance); (v3) otherwise an "unexplained"
+                  operation, one that changed no requirement's measurement or
+                  verdict (e.g. a cut whose tool is on the wrong plane, or lies
+                  outside the part); otherwise an insertion after the last
+                  statement. (v3) The same evidence replaces a last touch that
+                  is only the base body.
+
+Repair region: the blamed statement plus the tool bodies and parameters it uses; (v3) a tool body
+built over several statements (`ribs = ribs.union(...)`) is included in full (`region_chains`).
 
 Blames on the same statement are merged. Ranking: regressions, then last-touch
 by earliest row (early mistakes first), then missing features.
 
 Baseline localisers for the attribution experiment (E3) are included:
-`random_localize`, `last_statement_localize` and `llm_localize`.
+`random_localize`, `last_statement_localize`, spectrum-based `sbfl_rank` and `llm_localize`.
 """
 
 from __future__ import annotations
 
 import json
+import math
 import random
 import re
 from dataclasses import dataclass, field
@@ -32,9 +42,12 @@ from typing import Optional
 from .matrix import Trajectory
 from .program import Program
 
-RULES_VERSION = "v2"   # bump whenever a blame rule changes (E3 results are reported per version)
+# Blame-rule versions (E3 results are reported per version). v2 was frozen before the held-out seeds were run;
+# v3 adds the unexplained-operation rule and whole tool-body chains, developed on the development seed only.
+RULES = ("v2", "v3")
+RULES_VERSION = "v2"   # default used by the method; bump only after a version is validated on held-out data
 
-RULE_ORDER = {"regression": 0, "global": 1, "last_touch": 2, "missing": 3, "frame": 4}
+RULE_ORDER = {"regression": 0, "global": 1, "last_touch": 2, "unexplained": 3, "missing": 4, "frame": 5}
 
 # Requirements about one specific feature give sharper evidence than whole-part totals.
 LOCAL_TYPES = {"hole_at", "boss_at", "hole_count", "boss_count", "bolt_circle", "coaxial", "planar_face_at",
@@ -107,6 +120,37 @@ def _last_change(traj: Trajectory, i: int, skip=frozenset(), before: Optional[in
     return last
 
 
+def region_chains(rules: str) -> bool:
+    """Whether the repair region of this rule version includes whole tool-body chains."""
+    return rules >= "v3"
+
+
+def unexplained_rows(traj: Trajectory) -> list:
+    """Rows whose operation changed no requirement's measurement or verdict. With a complete specification
+    every step serves some requirement, so such a step is either built in the wrong place or does nothing
+    (a cut whose tool misses the part). Rare in correct programs: 2 of 255 Hard-Long reference steps and
+    6 of 485 CADTestBench reference steps (development seed, own / oracle suites)."""
+    out = []
+    for t in range(1, traj.T):
+        row = traj.result.rows[t]
+        if row.op in RIGID_OPS or row.stmt is None:
+            continue
+        if not any(bool(traj.M[t, i]) != bool(traj.M[t - 1, i])
+                   or _measure_key(traj.measure(t, i)) != _measure_key(traj.measure(t - 1, i)) for i in range(traj.N)):
+            out.append(t)
+    return out
+
+
+def _unexplained_blame(traj: Trajectory, i: int, final_msg: str):
+    rows = unexplained_rows(traj)
+    if not rows:
+        return None
+    t, rid = rows[0], traj.reqs[i].id
+    return Blame(_row_stmt(traj, t), t, "unexplained", [rid],
+                 [f"{rid} is not satisfied, and row {t} ({traj.result.rows[t].op}) changed none of the checked "
+                  f"quantities, so it is probably built in the wrong place: {final_msg}"])
+
+
 def _untouched_feature(traj: Trajectory, i: int) -> bool:
     """True when a feature-level check reads the same value on every state since the base body and that
     value says the feature is absent: a void that never appeared (material_at present=False), or a face
@@ -125,7 +169,7 @@ def _untouched_feature(traj: Trajectory, i: int) -> bool:
     return False
 
 
-def blame_requirement(traj: Trajectory, i: int) -> list:
+def blame_requirement(traj: Trajectory, i: int, rules: str = RULES_VERSION) -> list:
     """Primary blame for failing requirement i, plus an alternative when the evidence is ambiguous."""
     tr = traj.track(i)
     rid = traj.reqs[i].id
@@ -161,6 +205,11 @@ def blame_requirement(traj: Trajectory, i: int) -> list:
     last = _last_change(traj, i)
     if last == 0 and _untouched_feature(traj, i):
         last = None    # nothing after the base body ever touched this feature: it is missing
+    if last == 0 and rules >= "v3" and T > 1:
+        u = _unexplained_blame(traj, i, final_msg)       # only the base body "touched" it: weak evidence
+        if u is not None:
+            return [u, Blame(_row_stmt(traj, 0), 0, "last_touch", [rid],
+                             [f"{rid} is not satisfied; only the base body changed what it measures: {final_msg}"])]
     if last is not None:
         return [Blame(_row_stmt(traj, last), last, "last_touch", [rid],
                       [f"{rid} is not satisfied; the last operation that changed what it measures is row "
@@ -170,6 +219,10 @@ def blame_requirement(traj: Trajectory, i: int) -> list:
         return [Blame(by_value, None, "missing", [rid],
                       [f"{rid}: the feature never appeared where required; S{by_value} uses its dimensions "
                        f"and position, so it probably builds it in the wrong place: {final_msg}"])]
+    if rules >= "v3":
+        u = _unexplained_blame(traj, i, final_msg)
+        if u is not None:
+            return [u]
     last_stmt = _row_stmt(traj, T - 1) if T else None
     return [Blame(last_stmt, T - 1 if T else None, "missing", [rid],
                   [f"{rid}: no operation ever produced this feature: {final_msg}"], insert=True)]
@@ -217,7 +270,7 @@ def value_provenance(traj: Trajectory, i: int):
     return best
 
 
-def localize(traj: Trajectory) -> list:
+def localize(traj: Trajectory, rules: str = RULES_VERSION) -> list:
     """Ranked, merged blames for all failing requirements.
 
     Ranking: feature-level requirements before whole-part totals; then regressions, near-miss /
@@ -226,7 +279,7 @@ def localize(traj: Trajectory) -> list:
     local_of = {r.id: r.type in LOCAL_TYPES for r in traj.reqs}
     blames = []
     for i in traj.failing():
-        for b in blame_requirement(traj, i):
+        for b in blame_requirement(traj, i, rules):
             for other in blames:
                 if other.stmt == b.stmt and other.insert == b.insert:
                     other.req_ids += [r for r in b.req_ids if r not in other.req_ids]
@@ -266,6 +319,47 @@ def random_localize(traj: Trajectory, rng: random.Random) -> Optional[int]:
 def last_statement_localize(traj: Trajectory) -> Optional[int]:
     cands = modifying_statements(traj)
     return cands[-1] if cands else None
+
+
+# Spectrum-based fault localisation (software testing), with requirements as the tests. A statement "covers"
+# a requirement when one of its rows changed that requirement's measurement or verdict (the analogue of a
+# test executing the statement). ef / ep: failing / passing requirements covered; F / P: all failing / passing.
+SBFL_FORMULAS = {
+    "ochiai": lambda ef, ep, F, P: ef / math.sqrt(F * (ef + ep)) if ef else 0.0,              # Abreu et al. 2007
+    "tarantula": lambda ef, ep, F, P: ((ef / F) / (ef / F + (ep / P if P else 0.0))) if ef else 0.0,  # Jones & Harrold 2005
+    "dstar": lambda ef, ep, F, P: (ef ** 2 / (ep + F - ef) if ep + F - ef else math.inf) if ef else 0.0,  # Wong et al. 2014
+}
+
+
+def spectrum(traj: Trajectory) -> dict:
+    """{statement: (failing requirement indices it covers, passing ones)} over the result's lineage."""
+    fail = set(traj.failing())
+    cover = {s: (set(), set()) for s in modifying_statements(traj)}
+    for t, row in enumerate(traj.result.rows):
+        if row.stmt is None:
+            continue
+        for i in range(traj.N):
+            m = traj.measure(t, i)
+            if t == 0:
+                changed = bool(traj.M[0, i]) or m not in (None, [], {}, 0, False)
+            else:
+                changed = (bool(traj.M[t, i]) != bool(traj.M[t - 1, i])
+                           or _measure_key(m) != _measure_key(traj.measure(t - 1, i)))
+            if changed:
+                cover[row.stmt][0 if i in fail else 1].add(i)
+    return cover
+
+
+def sbfl_rank(traj: Trajectory, formula: str, rng: random.Random) -> tuple[list, list]:
+    """Statements ranked by suspiciousness (ties broken at random) and the statements tied for first place."""
+    cover = spectrum(traj)
+    F = len(traj.failing())
+    P = traj.N - F
+    f = SBFL_FORMULAS[formula]
+    scored = [(f(len(a), len(b), F, P), rng.random(), s) for s, (a, b) in cover.items()]
+    scored.sort(key=lambda x: (-x[0], x[1]))
+    tied = [s for sc, _, s in scored if scored and sc == scored[0][0]]
+    return [s for _, _, s in scored], tied
 
 
 LLM_LOCALIZE_SYSTEM = """You are debugging a CadQuery program that builds a 3D part.
