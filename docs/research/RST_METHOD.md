@@ -55,9 +55,10 @@ The blame rules were developed by inspecting E3 misses on **mutant seed 0** (Har
 references). Changes made during development: near-miss provenance; plausibility limits on near misses;
 feature-level requirements ranked before whole-part totals; features untouched since the base body count as
 missing; alternatives for regressions at whole-part moves; transitive parameter regions; value provenance
-for features built on the wrong plane (size + position literals). **The rules were then frozen** (commit after
-`ffd31e9`), and the reported E3 numbers use **mutant seed 1**, which no rule was tuned on. A second fresh set
-of parts (Hard-Long v1) would make this cleaner still.
+for features built on the wrong plane (size + position literals); and (v2) for non-monotone constructions,
+when a lost requirement's feature is touched again later, that later step is blamed first. **The rules are
+frozen at v2**, developed only on seed 0; reported E3 numbers use **mutant seeds 1 and 2**, which no rule was
+tuned on. A second fresh set of parts (Hard-Long v1) would make this cleaner still.
 
 ## Not yet implemented
 

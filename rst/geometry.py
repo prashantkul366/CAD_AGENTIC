@@ -418,19 +418,36 @@ class ShapeAnalysis:
         base = max(3.0 * self.tessellation_tol, 0.02)
         return max(base, tol or 0.0)
 
+    def features_map_onto_themselves(self, matrix: np.ndarray, offset: np.ndarray, tol: float) -> bool:
+        """Every complete cylindrical feature maps onto one of the same radius and kind.
+
+        Surface sampling (99th percentile) cannot see a small feature such as a tapped hole moving,
+        because it covers well under 1 % of the surface; this exact check does."""
+        feats = [f for f in self.cylinders if f.full]
+        for f in feats:
+            p = f.point @ matrix.T + offset
+            a = canonical_axis(f.axis @ matrix.T)
+            if not any(g.concave == f.concave and abs(g.radius - f.radius) <= tol
+                       and np.linalg.norm(np.cross(g.axis, a)) < 1e-3
+                       and point_line_distance(p, g.point, g.axis) <= max(tol, 1e-3) for g in feats):
+                return False
+        return True
+
     def is_rotation_symmetric(self, axis, center, angle: float, tol: Optional[float] = None) -> tuple[bool, float]:
         d = parse_direction(axis)
         c = np.asarray(center, dtype=float)
         R = rotation_matrix(d, angle)
         dev = self.transform_deviation(R, c - R @ c)
-        return dev <= self.symmetry_threshold(tol), dev
+        thr = self.symmetry_threshold(tol)
+        return dev <= thr and self.features_map_onto_themselves(R, c - R @ c, thr), dev
 
     def is_reflection_symmetric(self, normal, offset: float = 0.0, tol: Optional[float] = None) -> tuple[bool, float]:
         nvec = parse_direction(normal)
         H = np.eye(3) - 2.0 * np.outer(nvec, nvec)
         shift = 2.0 * offset * nvec
         dev = self.transform_deviation(H, shift)
-        return dev <= self.symmetry_threshold(tol), dev
+        thr = self.symmetry_threshold(tol)
+        return dev <= thr and self.features_map_onto_themselves(H, shift, thr), dev
 
     # --- compact summary for prompts and logs --------------------------------
 

@@ -135,6 +135,13 @@ def blame_requirement(traj: Trajectory, i: int) -> list:
         b = Blame(_row_stmt(traj, t), t, "regression", [rid],
                   [f"{rid} held until row {t - 1} and was broken at row {t}: {traj.message(t, i)}"])
         if t not in rigid:
+            # Long parts are built non-monotonically: a step may remove a feature that a later step is meant
+            # to restore. If the feature was touched again after the loss, that later step is the first suspect.
+            later = _last_change(traj, i, skip=rigid)
+            if later is not None and later > t:
+                return [Blame(_row_stmt(traj, later), later, "last_touch", [rid],
+                              [f"{rid} was lost at row {t} and row {later} touched it again without restoring it: "
+                               f"{traj.message(later, i)}"]), b]
             return [b]
         # broken by a whole-part move: either the move is wrong, or the part was built in the wrong
         # frame and held only by coincidence before the move -> the last shaping step is an alternative
