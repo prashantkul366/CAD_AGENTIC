@@ -80,8 +80,9 @@ re-scoring: `scripts/rst/e0_rescore.py` (results in `runs/e0/`).
 |---|---|---|
 | E1 CADSmith references: trace + convert to one-feature-per-statement | 100 % execute, 100 % convert with identical solids; mean 2.3 states, 1.6 → 2.2 modifying statements; only 11 % → 29 % have ≥ 3 steps | G0 (≥ 70 % convert) **passed**; CADSmith-100 too short for step-level attribution |
 | E4 CADSmith reproduction, whole-program refinement rounds (held-out = oracle requirements from the reference) | full vision: 3/20 rounds (15 %) broke a satisfied requirement; no vision: 5/16 (31 %) | E4 (≥ 15 %) met on both, small n |
-| E3 attribution, CADTestBench references (oracle spec, threaded; held-out seed 1, rules v1; 296 faults) | matrix first blame **57 %**, top-3 **84 %**; random 45 %, last step 40 %; operation faults 64 % vs 49 % random | matrix ≥ 70 % not yet; LLM comparison needs Bedrock |
-| E3 attribution, Hard-Long (own suites; development seed 0, rules v1; 186 faults, ~9.5 steps) | matrix first blame **56 %**, top-3 67 %; random **8 %**, last step 18 % | same; held-out seeds 1–2 with rules v2 running |
+| **E3 attribution, CADTestBench references** (oracle spec, threaded; held-out seeds 1–2, rules v2; 588 faults) | matrix first blame **57 %** (95 % CI 53–61), top-3 **84 %**; random 45 %, last step 39 % | first-blame gate (≥ 70 %) not met; short programs make random strong |
+| **E3 attribution, Hard-Long** (own suites; held-out seeds 1–2, rules v2; 380 faults, ~9.5 steps) | matrix first blame **57 %** (52–62), top-3 **68 %**; random **11 %**, last step **16 %**; deleted features 70 %, moved features 71 %, wrong counts 55 %, parameter changes 45 %, wrong plane 29 % | ~5x random; first-blame gate not met; LLM comparison pending (Bedrock) |
+| E3 development set (seed 0; rules were tuned on it) | CADTestBench 55 % / 80 %; Hard-Long 56 % / 67 % | not reported as a result |
 
 ## Final table we are aiming for (paper Table 1)
 
