@@ -68,6 +68,30 @@ Prefix each with `python scripts/rst/run_benchmark.py`. Runs resume: if a run st
 credentials expire), refresh `.env` and re-run the same command; finished results are skipped and failed ones
 are retried. `cadsmith_fixed` must run with `--workers 1` (the CADSmith code keeps global counters).
 
+## Open-weight generators (Colab GPU, no AWS)
+
+To show that RST also improves trained text-to-CAD models, generate their programs on a GPU and let the
+Bedrock runner start from them. On a Colab A100 (40 GB is enough for the 7B models):
+
+```bash
+git clone -b research_idea https://github.com/prashantkul366/CAD_AGENTIC.git
+cd CAD_AGENTIC
+pip install vllm pandas pyarrow cadquery==2.6.1
+python scripts/data/fetch_cadtestbench.py
+python scripts/data/fetch_text2cad.py --ids-file data/text2cad_subset_ids.txt
+python scripts/rst/generate_open_model.py --model cad-coder --exp open_cadcoder --datasets cadtestbench-detailed,hardlong,text2cad
+python scripts/rst/generate_open_model.py --model procad --exp open_procad --datasets cadtestbench-detailed,hardlong,text2cad
+```
+
+`fetch_text2cad.py` also downloads the file CAD-Coder's prompt template is read from. Zip `runs/open_cadcoder/p0`
+(and `runs/open_procad/p0`) and unzip them into `runs/` on the Bedrock machine, then:
+
+```bash
+python scripts/rst/run_benchmark.py --exp open_cadcoder --datasets cadtestbench-detailed,hardlong,text2cad --methods zero_shot,tests_log,rst
+```
+
+`zero_shot` is then the trained model alone, and `rst` / `tests_log` wrap it (Claude writes the requirements and repairs).
+
 ## Cost and time estimates (replace with pilot measurements)
 
 Per prompt and seed, with the default budget of 10 LLM calls per method (shared initial program and
