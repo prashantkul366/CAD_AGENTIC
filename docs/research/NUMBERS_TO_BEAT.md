@@ -80,7 +80,8 @@ re-scoring: `scripts/rst/e0_rescore.py` (results in `runs/e0/`).
 |---|---|---|
 | E1 CADSmith references: trace + convert to one-feature-per-statement | 100 % execute, 100 % convert with identical solids; mean 2.3 states, 1.6 → 2.2 modifying statements; only 11 % → 29 % have ≥ 3 steps | G0 (≥ 70 % convert) **passed**; CADSmith-100 too short for step-level attribution |
 | E4 CADSmith reproduction, whole-program refinement rounds (held-out = oracle requirements from the reference) | full vision: 3/20 rounds (15 %) broke a satisfied requirement; no vision: 5/16 (31 %) | E4 (≥ 15 %) met on both, small n |
-| E3 attribution on injected faults | script ready (`scripts/rst/e3_localization.py`) | matrix top-1 ≥ 70 % and ≥ 15 pts over LLM |
+| E3 attribution, CADTestBench references (oracle spec, threaded; held-out seed 1, rules v1; 296 faults) | matrix first blame **57 %**, top-3 **84 %**; random 45 %, last step 40 %; operation faults 64 % vs 49 % random | matrix ≥ 70 % not yet; LLM comparison needs Bedrock |
+| E3 attribution, Hard-Long (own suites; development seed 0, rules v1; 186 faults, ~9.5 steps) | matrix first blame **56 %**, top-3 67 %; random **8 %**, last step 18 % | same; held-out seeds 1–2 with rules v2 running |
 
 ## Final table we are aiming for (paper Table 1)
 

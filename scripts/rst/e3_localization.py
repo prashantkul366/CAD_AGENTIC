@@ -142,7 +142,9 @@ def main():
         rows = [r for r in rows if key in r]
         return round(sum(bool(r[key]) for r in rows) / len(rows), 4) if rows else None
 
-    summary = {"tag": tag, "n_mutants": len(records), "skipped": dict(skipped)}
+    from rst.localize import RULES_VERSION
+    summary = {"tag": tag, "rules": RULES_VERSION, "n_mutants": len(records), "skipped": dict(skipped)}
+    (out_dir / "RULES").write_text(RULES_VERSION, encoding="utf-8")
     for key in ("matrix_hit", "matrix_strict", "matrix_top3", "llm_hit", "llm_strict", "random_hit", "last_hit"):
         summary[key] = rate(key, records)
     for flag, name in ((True, "parameter_mutants"), (False, "operation_mutants")):

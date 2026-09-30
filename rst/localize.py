@@ -32,6 +32,8 @@ from typing import Optional
 from .matrix import Trajectory
 from .program import Program
 
+RULES_VERSION = "v2"   # bump whenever a blame rule changes (E3 results are reported per version)
+
 RULE_ORDER = {"regression": 0, "global": 1, "last_touch": 2, "missing": 3, "frame": 4}
 
 # Requirements about one specific feature give sharper evidence than whole-part totals.
