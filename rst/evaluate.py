@@ -174,11 +174,28 @@ def exact_iou(gen_step: str, ref_step: str, M: np.ndarray, cg, cr) -> dict:
         U = np.eye(4)
         U[:3, 3] = np.asarray(cr)
         full = U @ M @ T
-        A2 = A.transformShape(cq.Matrix([list(map(float, r)) for r in full[:3]]))
-        out["iou_aligned"] = _iou(A2, B)
+        out["iou_aligned"] = _iou(_rigid_move(A, full), B)
     except Exception:
         out["iou_aligned"] = None
     return out
+
+
+def _rigid_move(shape, full: np.ndarray):
+    """Apply a 4x4 rigid transform to an OCCT shape (rotation snapped to the nearest exact rotation)."""
+    import cadquery as cq
+    from OCP.BRepBuilderAPI import BRepBuilderAPI_Transform
+    from OCP.gp import gp_Trsf
+    u, _, vt = np.linalg.svd(full[:3, :3])
+    R = u @ vt
+    if np.linalg.det(R) < 0:          # never introduce a reflection
+        u[:, -1] *= -1
+        R = u @ vt
+    t = full[:3, 3]
+    trsf = gp_Trsf()
+    trsf.SetValues(*(float(x) for x in (R[0, 0], R[0, 1], R[0, 2], t[0],
+                                        R[1, 0], R[1, 1], R[1, 2], t[1],
+                                        R[2, 0], R[2, 1], R[2, 2], t[2])))
+    return cq.Shape.cast(BRepBuilderAPI_Transform(shape.wrapped, trsf, True).Shape())
 
 
 def _iou(A, B) -> float:

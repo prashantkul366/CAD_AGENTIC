@@ -71,8 +71,20 @@ These prompts are short sketch-and-extrude parts, so the expected gain here is s
 | Full vision (paper / ours) | 100 / 100 | 0.48 / 0.44 | 0.74 / 0.66 | 0.9846 / 0.9869 | 0.9629 / 0.9720 |
 
 The vision effect does not reproduce (T3 mean CD 1.26 vs 1.22 without/with vision; paper 49.68 vs 1.42), IoU varies
-by up to 0.68 on identical geometry, and the no-vision judge "sees" renders in 83/116 verdicts. Corrected
-re-scoring: `scripts/rst/e0_rescore.py` (results in `runs/e0/`).
+by up to 0.68 on identical geometry, and the no-vision judge "sees" renders in 83/116 verdicts.
+
+**E0: corrected re-scoring of the reproduction** (`scripts/rst/e0_rescore.py`; parts rebuilt from the stored code;
+rigid ICP only, exact OCCT boolean IoU, 3 sampling seeds):
+
+| Run | mean CD (CADSmith protocol → corrected) | median CD | CD noise floor | exact IoU as placed (median) | bbox error > 1 mm | volume error > 5 % |
+|---|---|---|---|---|---|---|
+| Full vision | 0.66 → 0.63 | 0.44 | 0.437 | 1.00 | 2 / 100 | 2 / 100 |
+| No vision | 3.52 → **1.44** | 0.45 | 0.437 | 1.00 | 3 / 100 | 4 / 100 |
+| Zero-shot | 20.4 → 22.1 | 0.59 | 0.470 | 1.00 | 12 / 100 | 11 / 100 |
+
+Median CD is the sampling noise floor (a part compared with itself), so it cannot rank methods. Part of the
+no-vision gap under the original protocol was an alignment artefact (scale-fitting ICP on T2_020). The ordering
+full < no-vision < zero-shot survives; dimensional errors (bbox, volume) make the differences visible.
 
 ## 5. Premise experiments measured so far (this repo, CPU only)
 
