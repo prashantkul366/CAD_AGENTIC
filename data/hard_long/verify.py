@@ -1,8 +1,9 @@
 """Re-verify every Hard-Long entry with the current code (reference passes its suite, >= 8 states,
 3 single-statement mutants all caught). Prints a table and exits non-zero if any entry fails.
 
-    python data/hard_long/verify.py            # check only
-    python data/hard_long/verify.py --update   # also refresh n_rows / bbox / volume / mutant_kills in the file
+    python data/hard_long/verify.py                        # check hard_long_v0.jsonl only
+    python data/hard_long/verify.py --update               # also refresh n_rows / bbox / volume / mutant_kills
+    python data/hard_long/verify.py --version v1 --update  # the same for hard_long_v1.jsonl
 """
 
 import json
@@ -19,7 +20,9 @@ from check_entry import check
 
 def main():
     update = "--update" in sys.argv
-    rows = [json.loads(l) for l in open(HERE / "hard_long_v0.jsonl", encoding="utf-8") if l.strip()]
+    version = sys.argv[sys.argv.index("--version") + 1] if "--version" in sys.argv else "v0"
+    path = HERE / f"hard_long_{version}.jsonl"
+    rows = [json.loads(l) for l in open(path, encoding="utf-8") if l.strip()]
     bad = 0
     print(f"{'id':8s} {'family':26s} {'ok':3s} {'rows':>4s} {'reqs':>4s} kills")
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as work:
@@ -33,10 +36,10 @@ def main():
                   f"{out.get('requirements', 0):>4} {out.get('mutant_kills', '')} {out.get('why', '')}", flush=True)
     print(f"{len(rows) - bad}/{len(rows)} entries pass")
     if update:
-        with open(HERE / "hard_long_v0.jsonl", "w", encoding="utf-8") as f:
+        with open(path, "w", encoding="utf-8") as f:
             for e in rows:
                 f.write(json.dumps(e) + "\n")
-        print("updated", HERE / "hard_long_v0.jsonl")
+        print("updated", path)
     sys.exit(1 if bad else 0)
 
 

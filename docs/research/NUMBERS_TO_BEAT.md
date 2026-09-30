@@ -96,6 +96,8 @@ full < no-vision < zero-shot survives; dimensional errors (bbox, volume) make th
 | **E3 attribution, CADTestBench references** (oracle spec, threaded; held-out seeds 1–2, rules v2; 588 faults) | matrix first blame **57 %** (95 % CI 53–61), top-3 **84 %**; random 45 %, last step 39 % | first-blame gate (≥ 70 %) not met; short programs make random strong |
 | **E3 attribution, Hard-Long** (own suites; held-out seeds 1–2, rules v2; 380 faults, ~9.5 steps) | matrix first blame **57 %** (52–62), top-3 **68 %**; random **11 %**, last step **16 %**; deleted features 70 %, moved features 71 %, wrong counts 55 %, parameter changes 45 %, wrong plane 29 % | ~5x random; first-blame gate not met; LLM comparison pending (Bedrock) |
 | E3 development set (seed 0; rules were tuned on it) | CADTestBench 55 % / 80 %; Hard-Long 56 % / 67 % | not reported as a result |
+| **E3 spectrum-based baselines** (SBFL with requirements as tests; same held-out faults, v2 region) | CADTestBench: Ochiai **57 %**, DStar **59 %** (matrix v2 57 %); Hard-Long: Ochiai 39 %, DStar 39 % (matrix 57 %) | SBFL matches the matrix on short programs; the matrix leads by ~18 pts on long ones |
+| **E3 rules v3** (frozen after seed-0 development; held-out seeds 1–2; all localisers scored with the v3 region) | Hard-Long **59.5 %** (54–64), top-3 71 %, vs v2 56.8 %: 16 faults gained / 6 lost (McNemar p = 0.053); wrong plane 29 → 38 %, size changes 45 → 52 %, deleted features 70 → 66 %. CADTestBench **58.7 %** (55–63), top-3 86 %, vs v2 56.6 %: 14 / 2 (p = 0.004); DStar 60 %, Ochiai 58 % | improves on both; confirmatory test on the 40 fresh Hard-Long v1 parts pending |
 
 ## Final table we are aiming for (paper Table 1)
 

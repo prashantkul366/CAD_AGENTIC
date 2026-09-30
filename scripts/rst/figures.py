@@ -32,6 +32,11 @@ INK, INK2, MUTED = "#0b0b0b", "#52514e", "#898781"
 GRID, AXIS = "#e1e0d9", "#c3c2b7"
 RST_BLUE, RST_BLUE_LIGHT = "#2a78d6", "#86b6ef"
 BASE_DARK, BASE_LIGHT = "#898781", "#c3c2b7"
+SBFL_GREY = "#52514e"         # strongest baseline: darkest neutral
+
+# E3 records re-scored by scripts/rst/e3_rescore.py (every localiser scored with the same repair region)
+FIG_RULES = "v3"
+E3_RECORDS = ROOT / "runs" / "e3_rescored" / f"{FIG_RULES}_region{FIG_RULES}"
 GOOD, CRITICAL = "#0ca30c", "#d03b3b"
 CHECK, CROSS = "✓", "✗"
 SYMBOL_FONT = "DejaVu Sans"   # Segoe UI has no check / cross glyphs
@@ -55,7 +60,7 @@ def wilson(k, n, z=1.96):
 def records(base, seeds=(1, 2)):
     rows = []
     for s in seeds:
-        f = ROOT / "runs" / "e3" / f"{base}_s{s}" / "records.jsonl"
+        f = E3_RECORDS / f"{base}_s{s}" / "records.jsonl"
         if f.exists():
             rows += [json.loads(l) for l in open(f, encoding="utf-8") if l.strip()]
     return rows
@@ -87,13 +92,14 @@ def fig_e3_localisation():
     groups = [("Hard-Long\n(~9.5 steps)", records("hardlong_entry")),
               ("CADTestBench refs\n(~2-3 steps)", records("cadtestbench-detailed_oracle_thr"))]
     series = [("RST matrix, first guess", "matrix_hit", RST_BLUE), ("RST matrix, within top 3", "matrix_top3", RST_BLUE_LIGHT),
-              ("Last step", "last_hit", BASE_DARK), ("Random step", "random_hit", BASE_LIGHT)]
-    fig, ax = plt.subplots(figsize=(6.2, 3.3))
-    h, gap = 0.18, 0.03
+              ("SBFL (DStar)", "dstar_hit", SBFL_GREY), ("Last step", "last_hit", BASE_DARK),
+              ("Random step", "random_hit", BASE_LIGHT)]
+    fig, ax = plt.subplots(figsize=(6.2, 3.6))
+    h, gap = 0.15, 0.025
     for gi, (_, rows) in enumerate(groups):
         n = len(rows)
         for si, (label, key, color) in enumerate(series):
-            y = gi + (si - 1.5) * (h + gap)
+            y = gi + (si - (len(series) - 1) / 2) * (h + gap)
             v = rate(rows, key)
             ax.barh(y, v * 100, height=h, color=color, label=label if gi == 0 else None, edgecolor=SURFACE, linewidth=1)
             end = v * 100
@@ -109,7 +115,7 @@ def fig_e3_localisation():
     ax.set_xlim(0, 104)
     ax.set_xlabel("injected faults localised to the right step (%)")
     _grid(ax)
-    _legend_above(ax, 4)
+    _legend_above(ax, 5)
     ax.set_title("Which step broke the part? (held-out faults, no target geometry)", loc="left", fontsize=9.5,
                  color=INK, pad=22)
     save(fig, "fig_e3_localisation")
@@ -120,26 +126,26 @@ def fig_e3_by_fault():
     names = {"feature_delete": "feature deleted", "placement_shift": "feature moved", "count_change": "count changed",
              "param_shift": "size changed", "wrong_workplane": "wrong plane / face"}
     kinds = sorted(names, key=lambda k: -rate([r for r in rows if r["kind"] == k], "matrix_hit"))
-    series = [("RST matrix, first guess", "matrix_hit", RST_BLUE), ("Last step", "last_hit", BASE_DARK),
-              ("Random step", "random_hit", BASE_LIGHT)]
-    fig, ax = plt.subplots(figsize=(6.2, 3.3))
-    h, gap = 0.24, 0.03
+    series = [("RST matrix, first guess", "matrix_hit", RST_BLUE), ("SBFL (DStar)", "dstar_hit", SBFL_GREY),
+              ("Last step", "last_hit", BASE_DARK), ("Random step", "random_hit", BASE_LIGHT)]
+    fig, ax = plt.subplots(figsize=(6.2, 3.6))
+    h, gap = 0.19, 0.025
     for ki, k in enumerate(kinds):
         sub = [r for r in rows if r["kind"] == k]
         for si, (label, key, color) in enumerate(series):
-            y = ki + (si - 1) * (h + gap)
+            y = ki + (si - (len(series) - 1) / 2) * (h + gap)
             v = rate(sub, key)
             ax.barh(y, v * 100, height=h, color=color, label=label if ki == 0 else None, edgecolor=SURFACE, linewidth=1)
             ax.text(v * 100 + 1.2, y, f"{100 * v:.0f}%", va="center", fontsize=7.5,
                     color=INK2 if key == "matrix_hit" else MUTED)
-        ax.text(99, ki - 1.5 * (h + gap) + 0.02, f"n = {len(sub)}", fontsize=7, color=MUTED, ha="right", va="top")
+        ax.text(99, ki - (len(series) / 2) * (h + gap) + 0.02, f"n = {len(sub)}", fontsize=7, color=MUTED, ha="right", va="top")
     ax.set_yticks(range(len(kinds)))
     ax.set_yticklabels([names[k] for k in kinds])
     ax.invert_yaxis()
     ax.set_xlim(0, 100)
     ax.set_xlabel("localised to the right step (%)")
     _grid(ax)
-    _legend_above(ax, 3)
+    _legend_above(ax, 4)
     ax.set_title("Hard-Long held-out faults by type", loc="left", fontsize=9.5, color=INK, pad=22)
     save(fig, "fig_e3_by_fault")
 
@@ -207,7 +213,7 @@ def fig_teaser_matrix(entry_id=None):
         print("no suitable teaser example found")
         return None
     e, mut, traj, stmts = chosen
-    blame = localize(traj)[0]
+    blame = localize(traj, FIG_RULES)[0]
     M = traj.M
     T, N = M.shape
     failing = traj.failing()
