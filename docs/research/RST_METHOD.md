@@ -82,6 +82,20 @@ as tests; a statement covers a requirement when it changed that requirement's me
 On the development seed, SBFL is as good as the matrix on short CADTestBench programs (Ochiai 56.9 % vs v2 54.3 %,
 v3 57.2 %) but far behind on Hard-Long (39 % vs 56–60 %): the blame rules pay off on long programs.
 
+## Confirmatory test on Hard-Long v1 (plan fixed before running)
+
+Data: the 40 Hard-Long v1 parts (HL_031–HL_070), written after v2 was frozen and never inspected during rule
+development, so all mutant seeds (0, 1, 2) are held-out; 8 mutants per part and seed, own suites (`--spec entry`).
+Run once with `e3_localization.py --dataset hardlong-v1`, then re-score the same faults with `e3_rescore.py`.
+
+Pre-stated comparisons (pooled over seeds; 95 % Wilson intervals; paired exact McNemar tests on the same faults):
+1. matrix v3 vs matrix v2, first guess (expected: v3 ≥ v2);
+2. matrix v3 vs SBFL DStar and Ochiai, first guess (expected: matrix higher on Hard-Long);
+3. matrix v3 vs random and last step (expected: well above both);
+4. per fault type, descriptive only.
+Whatever the outcome, v1 numbers are reported as they come out; the version adopted as the method default
+is v3 if comparison 1 is not worse, otherwise v2. No rule is changed after this run.
+
 ## Not yet implemented
 
 Learning components (kernel-labelled step scorer / PRM, process-vs-outcome GRPO) — deliberately after the
