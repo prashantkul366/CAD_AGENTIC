@@ -68,9 +68,9 @@ tuned on.
   repair region in full (`Program.dependencies(chains=True)`).
 
 Seed-0 effect, first guess (every localiser scored with the same region): Hard-Long 55.9 → 60.2 %,
-CADTestBench 54.3 → 57.2 %. v2 stays the method's default (`RULES_VERSION`) until v3 is confirmed on held-out
-data: mutant seeds 1–2 of Hard-Long v0 and CADTestBench, and the 40 Hard-Long v1 parts, which were written after
-v2 was frozen and never inspected during rule development. `rst_v3` in `run_benchmark.py` runs the method with v3.
+CADTestBench 54.3 → 57.2 %. Held-out seeds 1–2: Hard-Long 56.8 → 59.5 %, CADTestBench 56.6 → 58.7 %. Confirmed on
+Hard-Long v1 (below), so **v3 is the method's default** (`RULES_VERSION`) since 2026-10-03; `rst_v2` in
+`run_benchmark.py` runs the method with v2 as an ablation.
 
 **Re-scoring without re-execution.** Every E3 fault keeps its program, requirements and full trajectory under
 `runs/e3/<tag>/work/`. `scripts/rst/e3_rescore.py --rules <v> [--region <v>]` rebuilds the trajectories and
@@ -95,6 +95,26 @@ Pre-stated comparisons (pooled over seeds; 95 % Wilson intervals; paired exact M
 4. per fault type, descriptive only.
 Whatever the outcome, v1 numbers are reported as they come out; the version adopted as the method default
 is v3 if comparison 1 is not worse, otherwise v2. No rule is changed after this run.
+
+**Result (2026-10-03; 742 faults on 40 parts, seeds 0–2; `runs/e3_rescored/compare_hardlong-v1_entry_s012.md`):**
+
+| localiser | first guess (95 % CI) | top-3 |
+|---|---|---|
+| matrix v3 | **55.5 %** (52–59) | 66.8 % |
+| matrix v2 | 52.6 % (49–56) | 63.5 % |
+| SBFL DStar / Ochiai / Tarantula | 42.5 / 40.3 / 37.7 % | 60.6 / 58.9 / 58.9 % |
+| last step / random | 17.4 / 9.7 % | |
+
+1. v3 vs v2: 24 faults gained, 2 lost, exact McNemar p = 1e-5. **v3 adopted.**
+2. v3 vs DStar: 170 vs 73 (p = 4e-10); vs Ochiai 178 vs 65 (p = 3e-13). Matrix higher, as expected.
+3. v3 vs last step 301 vs 18, vs random 376 vs 36 (p < 1e-60).
+4. By fault type (v3 / DStar): deleted feature 54 / 15 %, wrong plane 46 / 28 %, size change 54 / 49 %, moved feature
+   64 / 66 %, count change 61 / 86 %.
+
+The fresh parts are about 4 points harder than v0's held-out seeds (59.5 %), mostly on deleted features (66 → 54 %):
+the expected cost of having developed the rules on v0 parts. The first-guess gate (≥ 70 %) is not met; top-3 is 67 %.
+SBFL is clearly better on count changes, so a matrix + SBFL combination is the obvious next rule version; it would have
+to be developed on v0 seed 0 and tested on new data, not on v1.
 
 ## Not yet implemented
 

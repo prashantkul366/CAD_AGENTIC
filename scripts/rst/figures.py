@@ -89,12 +89,13 @@ def _legend_above(ax, ncol):
 
 
 def fig_e3_localisation():
-    groups = [("Hard-Long\n(~9.5 steps)", records("hardlong_entry")),
+    groups = [("Hard-Long v1, unseen parts\n(~9.6 steps)", records("hardlong-v1_entry", seeds=(0, 1, 2))),
+              ("Hard-Long v0, held-out seeds\n(~9.5 steps)", records("hardlong_entry")),
               ("CADTestBench refs\n(~2-3 steps)", records("cadtestbench-detailed_oracle_thr"))]
     series = [("RST matrix, first guess", "matrix_hit", RST_BLUE), ("RST matrix, within top 3", "matrix_top3", RST_BLUE_LIGHT),
               ("SBFL (DStar)", "dstar_hit", SBFL_GREY), ("Last step", "last_hit", BASE_DARK),
               ("Random step", "random_hit", BASE_LIGHT)]
-    fig, ax = plt.subplots(figsize=(6.2, 3.6))
+    fig, ax = plt.subplots(figsize=(6.2, 4.9))
     h, gap = 0.15, 0.025
     for gi, (_, rows) in enumerate(groups):
         n = len(rows)
@@ -122,7 +123,7 @@ def fig_e3_localisation():
 
 
 def fig_e3_by_fault():
-    rows = records("hardlong_entry")
+    rows = records("hardlong_entry") + records("hardlong-v1_entry", seeds=(0, 1, 2))
     names = {"feature_delete": "feature deleted", "placement_shift": "feature moved", "count_change": "count changed",
              "param_shift": "size changed", "wrong_workplane": "wrong plane / face"}
     kinds = sorted(names, key=lambda k: -rate([r for r in rows if r["kind"] == k], "matrix_hit"))
@@ -146,7 +147,7 @@ def fig_e3_by_fault():
     ax.set_xlabel("localised to the right step (%)")
     _grid(ax)
     _legend_above(ax, 4)
-    ax.set_title("Hard-Long held-out faults by type", loc="left", fontsize=9.5, color=INK, pad=22)
+    ax.set_title(f"Hard-Long held-out faults by type (v0 held-out seeds + v1 parts, n = {len(rows)})", loc="left", fontsize=9.5, color=INK, pad=22)
     save(fig, "fig_e3_by_fault")
 
 
@@ -157,7 +158,8 @@ def fig_program_length():
         f = ROOT / path
         if f.exists():
             data.append((label, [json.loads(l)["threaded_stmts_modifying"] for l in open(f, encoding="utf-8") if l.strip()]))
-    hl = [json.loads(l)["n_ops"] for l in open(ROOT / "data/hard_long/hard_long_v0.jsonl", encoding="utf-8") if l.strip()]
+    hl = [json.loads(l)["n_ops"] for v in ("v0", "v1")
+          for l in open(ROOT / f"data/hard_long/hard_long_{v}.jsonl", encoding="utf-8") if l.strip()]
     data.append(("Hard-Long (ours)", hl))
     fig, ax = plt.subplots(figsize=(6.2, 2.5))
     rng = random.Random(0)

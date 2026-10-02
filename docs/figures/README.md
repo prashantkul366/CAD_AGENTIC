@@ -16,17 +16,18 @@ reference geometry is used.
 **fig_e3_localisation** — *Fault localisation without target geometry.* Share of injected faults for which the
 blamed step is the faulty one (a hit counts the blamed statement together with the statements it depends on,
 i.e. the region the repair may edit). Baselines: spectrum-based fault localisation (DStar, requirements as
-tests), the last step, a random step. On Hard-Long (~9.5 construction steps) the matrix's first guess is right
-59 % of the time (95 % Wilson interval shown), against 40 % for SBFL and 11 % for a random step. On the short
-CADTestBench reference programs (2–3 steps) a random step is already right 46 % of the time and SBFL equals
-the matrix (60 % vs 59 %): step-level blame only separates methods on long programs.
+tests), the last step, a random step. Three held-out sets: 40 Hard-Long v1 parts never seen during rule
+development (the pre-registered confirmatory test), held-out mutant seeds of the 30 Hard-Long v0 parts, and the
+CADTestBench reference programs. On long programs the matrix's first guess is right 56–59 % of the time (95 %
+Wilson intervals shown) against 40–42 % for SBFL and 10–11 % for a random step; on the short CADTestBench
+programs (2–3 steps) a random step is already right 46 % of the time and SBFL equals the matrix (60 % vs 59 %).
 
-**fig_e3_by_fault** — *Hard-Long localisation by fault type.* The matrix's lead over SBFL comes from deleted
-features (66 % vs 7 %: SBFL can only rank code that exists), features built on the wrong plane or face (38 % vs
-26 %) and changed sizes (52 % vs 45 %); moved features are a tie and SBFL is better on changed counts (69 % vs
-60 %).
+**fig_e3_by_fault** — *Hard-Long localisation by fault type* (all 1,122 held-out Hard-Long faults). The matrix's
+lead over SBFL comes from deleted features (58 % vs 12 %: SBFL can only rank code that exists), features built on
+the wrong plane or face (43 % vs 27 %) and changed sizes (54 % vs 48 %); moved features are a tie and SBFL is
+better on changed counts (80 % vs 60 %).
 
 **fig_program_length** — *Existing benchmarks are too short for step-level attribution.* Number of construction
 steps that change the solid (after rewriting each reference program to one feature per statement). CADSmith-100
-and CADTestBench average 2.2 and 2.5 steps, so which-step questions are nearly trivial there; Hard-Long parts
-average 9.5.
+and CADTestBench average 2.2 and 2.5 steps, so which-step questions are nearly trivial there; the 70 Hard-Long
+parts (v0 + v1) average 9.5.

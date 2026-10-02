@@ -45,7 +45,7 @@ from .program import Program
 # Blame-rule versions (E3 results are reported per version). v2 was frozen before the held-out seeds were run;
 # v3 adds the unexplained-operation rule and whole tool-body chains, developed on the development seed only.
 RULES = ("v2", "v3")
-RULES_VERSION = "v2"   # default used by the method; bump only after a version is validated on held-out data
+RULES_VERSION = "v3"   # default used by the method (v3 confirmed on Hard-Long v1, 2026-10-03)
 
 RULE_ORDER = {"regression": 0, "global": 1, "last_touch": 2, "unexplained": 3, "missing": 4, "frame": 5}
 
