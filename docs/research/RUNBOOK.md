@@ -60,13 +60,15 @@ tells us whether the full runs are worth it (the go/no-go gates in the plan).
 | Ablations | `--exp ablations --datasets cadtestbench-detailed --methods rst,rst_llm_localize,rst_random_localize,rst_whole_rewrite,rst_accept_always` | 200 × 1 × 5 |
 | CADSmith (bug-fixed) | `--exp cadsmith --datasets cadsmith,cadtestbench-detailed --methods cadsmith_fixed,cadsmith_fixed_noleak,rst --workers 1` | 300 × 1 × 3 |
 | Text2CAD subset | `--exp t2c --datasets text2cad --methods zero_shot,tests_log,rst` | 500 × 1 × 3 |
-| E3: matrix vs LLM localisation | `python scripts/rst/e3_localization.py --dataset hardlong --spec entry --llm --n-mutants 8` | 30 × 8 mutants |
-| E3 with self-written specs | `python scripts/rst/e3_localization.py --dataset hardlong --spec self --llm --n-mutants 8` | 30 × 8 mutants |
-| E3 on CADTestBench | `python scripts/rst/e3_localization.py --dataset cadtestbench-detailed --spec oracle --threaded --llm` | 200 × 5 mutants |
+| E3: matrix vs LLM localisation | `python scripts/rst/e3_localization.py --dataset hardlong-all --spec entry --llm --n-mutants 8 --seed 1` (then `--seed 2`) | 70 × 8 mutants × 2 |
+| E3 with self-written specs | `python scripts/rst/e3_localization.py --dataset hardlong-all --spec self --llm --n-mutants 8 --seed 1` | 70 × 8 mutants |
+| E3 on CADTestBench | `python scripts/rst/e3_localization.py --dataset cadtestbench-detailed --spec oracle --threaded --llm --seed 1` (then `--seed 2`) | 200 × 5 mutants × 2 |
 
-Prefix each with `python scripts/rst/run_benchmark.py`. Runs resume: if a run stops (for example when session
-credentials expire), refresh `.env` and re-run the same command; finished results are skipped and failed ones
-are retried. `cadsmith_fixed` must run with `--workers 1` (the CADSmith code keeps global counters).
+Prefix the benchmark rows (all but E3) with `python scripts/rst/run_benchmark.py`. Runs resume: if a run stops (for
+example when session credentials expire), refresh `.env` and re-run the same command; finished results are skipped
+and failed ones are retried. The E3 commands resume with `--resume` added (finished parts are kept, the part it
+stopped in is redone). E3 uses mutant seeds 1 and 2 because seed 0 was used to develop the blame rules.
+`cadsmith_fixed` must run with `--workers 1` (the CADSmith code keeps global counters).
 
 ## Open-weight generators (Colab GPU, no AWS)
 

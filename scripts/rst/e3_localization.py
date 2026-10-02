@@ -52,6 +52,8 @@ def main():
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--out", default="runs/e3")
     ap.add_argument("--rules", default=None, help="blame-rule version (default: the method's, rst.localize.RULES_VERSION)")
+    ap.add_argument("--resume", action="store_true",
+                    help="continue a stopped run: keep the records of finished parts, redo the part it stopped in")
     args = ap.parse_args()
 
     tag = f"{args.dataset}_{args.spec}{'_thr' if args.threaded else ''}{'_llm' if args.llm else ''}_s{args.seed}"
@@ -69,8 +71,35 @@ def main():
     rng_sbfl = random.Random(args.seed + 1000)    # own stream: adding SBFL leaves the other baselines unchanged
     records = []
     skipped = defaultdict(int)
+    # Progress is written as it happens, so a stopped run loses at most the part it was in. On --resume the
+    # random baselines continue on fresh streams; e3_rescore.py replays them in record order for the reported numbers.
+    partial, done_file = out_dir / "records.partial.jsonl", out_dir / "done_parts.jsonl"
+    done = {}
+    if args.resume and done_file.exists() and partial.exists():
+        for line in open(done_file, encoding="utf-8"):
+            if line.strip():
+                d = json.loads(line)
+                done[d["id"]] = d
+        records = [r for r in (json.loads(l) for l in open(partial, encoding="utf-8") if l.strip()) if r["id"] in done]
+        if done:
+            skipped.update(list(done.values())[-1]["skipped"])
+        print(f"resuming: {len(done)} parts done, {len(records)} records kept", flush=True)
+    partial.write_text("".join(json.dumps(r) + "\n" for r in records), encoding="utf-8")
+    done_file.write_text("".join(json.dumps(d) + "\n" for d in done.values()), encoding="utf-8")
+    partial_f = open(partial, "a", encoding="utf-8")
 
+    def mark_done(eid):
+        with open(done_file, "a", encoding="utf-8") as f:
+            f.write(json.dumps({"id": eid, "skipped": dict(skipped)}) + "\n")
+
+    prev = None
     for e in load(args.dataset, args.limit):
+        if prev is not None:
+            mark_done(prev)
+            prev = None
+        if e["id"] in done:
+            continue
+        prev = e["id"]
         code = normalised(e["reference_code"])
         if args.threaded:
             code, _ = thread_program(code)
@@ -147,7 +176,12 @@ def main():
                 rec["llm_strict"] = pick == m.stmt
                 rec["llm_hit"] = hit(pick)
             records.append(rec)
-            print(json.dumps(rec))
+            partial_f.write(json.dumps(rec) + "\n")
+            partial_f.flush()
+            print(json.dumps(rec), flush=True)
+    if prev is not None:
+        mark_done(prev)
+    partial_f.close()
 
     def rate(key, rows):
         rows = [r for r in rows if key in r]
