@@ -51,6 +51,16 @@ python scripts/rst/pack_run.py --exp pilot
 Send `runs/pilot.zip`. The pilot measures real token use per method, which replaces the estimates below, and
 tells us whether the full runs are worth it (the go/no-go gates in the plan).
 
+**Decision rule, fixed before the pilot (2026-10-03).** 40 prompts cannot show significance (one prompt = 2.5 pass-rate
+points), so the pilot checks feasibility and direction:
+1. *Sanity:* our CADTests+Log re-implementation (`tests_log`) reaches a pass rate within ~10 points of the paper's
+   0.625 (detailed). If it is far below, the baseline is too weak to compare against: fix it before any main run.
+2. *Go:* RST pass rate ≥ `tests_log` pass rate, requirement score not lower, invalid ratio not higher, and RST tokens
+   ≤ 1.5× `tests_log`. A lead of ≥ 5 points (2 prompts) is a strong signal.
+3. *Stop and inspect:* RST trails `tests_log` by ≥ 5 points. Read the failures before spending more; the main runs
+   wait.
+Whatever the outcome, the pilot outputs also supply real (not injected) failures for the localisation analysis.
+
 ## 3. Main runs (only after the pilot is reviewed)
 
 | Run | Command | Est. prompts × seeds × methods |
