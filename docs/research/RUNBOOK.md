@@ -11,7 +11,7 @@ git fetch origin
 git checkout research_idea
 git pull
 pip install -r requirements.txt          # adds rtree and pyarrow to the reproduction environment
-python -m pytest tests -q                 # CPU only, ~2 min, should end with "40 passed"
+python -m pytest tests -q                 # CPU only, ~2 min, should end with "43 passed"
 ```
 
 `.env` is the same as for the CADSmith reproduction (`LLM_BACKEND=bedrock`, AWS credentials, `AWS_REGION`).
